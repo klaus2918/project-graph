@@ -34,7 +34,7 @@ export class MarkdownImporter extends BaseImporter {
       collisionBox: new CollisionBox([new Rectangle(diffLocation, Vector.same(100))]),
     });
     monoStack.push(rootNode, -1);
-    this.project.stageManager.add(rootNode);
+    this.project.stageManager.add(rootNode, true);
 
     let yIndex = 0;
 
@@ -46,7 +46,7 @@ export class MarkdownImporter extends BaseImporter {
           new Rectangle(diffLocation.add(new Vector(deepLevel * 50, yIndex * 100)), Vector.same(100)),
         ]),
       });
-      this.project.stageManager.add(node);
+      this.project.stageManager.add(node, true);
       yIndex++;
 
       // 检查栈，保持一个严格单调栈
@@ -59,7 +59,7 @@ export class MarkdownImporter extends BaseImporter {
           targetRectangleRate: new Vector(0.01, 0.5), // 目标节点左侧边缘
           sourceRectangleRate: new Vector(0.99, 0.5), // 源节点右侧边缘
         });
-        this.project.stageManager.add(newEdge);
+        this.project.stageManager.add(newEdge, true);
       }
     };
 
@@ -77,6 +77,9 @@ export class MarkdownImporter extends BaseImporter {
     for (const markdownNode of markdownJson) {
       dfsMarkdownNode(markdownNode, 0);
     }
+
+    // 批量插入期间跳过了引用刷新，这里统一刷新一次
+    this.project.stageManager.updateReferences();
 
     // 自动应用树形布局（如果启用）
     if (autoLayout) {

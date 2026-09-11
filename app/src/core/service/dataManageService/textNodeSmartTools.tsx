@@ -277,42 +277,46 @@ export namespace TextNodeSmartTools {
     const fromLines: Edge[] = project.graphMethods.edgeParentArray(node);
     const toLines: Edge[] = project.graphMethods.edgeChildrenArray(node);
 
-    splitedTextList.forEach((splitedText) => {
-      const newTextNode = new TextNode(project, {
-        uuid: v4(),
-        text: splitedText,
-        collisionBox: new CollisionBox([new Rectangle(new Vector(putLocation.x, putLocation.y), new Vector(1, 1))]),
-        color: node.color.clone(),
+    // 本函数会创建 k 个节点和 m×k 条连线，放进批量作用域只刷新一次引用。
+    // 作用域内不读派生数据（parentSection / topLevelEntities 等），退出后引用已是最新。
+    project.stageManager.runBatch(() => {
+      splitedTextList.forEach((splitedText) => {
+        const newTextNode = new TextNode(project, {
+          uuid: v4(),
+          text: splitedText,
+          collisionBox: new CollisionBox([new Rectangle(new Vector(putLocation.x, putLocation.y), new Vector(1, 1))]),
+          color: node.color.clone(),
+        });
+        newNodes.push(newTextNode);
+        project.stageManager.add(newTextNode);
+        putLocation.y += 100;
       });
-      newNodes.push(newTextNode);
-      project.stageManager.add(newTextNode);
-      putLocation.y += 100;
-    });
 
-    fromLines.forEach((edge) => {
-      newNodes.forEach((newNode) => {
-        project.stageManager.add(
-          new LineEdge(project, {
-            associationList: [edge.source, newNode],
-            text: edge.text,
-            targetRectangleRate: edge.targetRectangleRate.clone(),
-            sourceRectangleRate: edge.sourceRectangleRate.clone(),
-            color: edge.color.clone(),
-          }),
-        );
+      fromLines.forEach((edge) => {
+        newNodes.forEach((newNode) => {
+          project.stageManager.add(
+            new LineEdge(project, {
+              associationList: [edge.source, newNode],
+              text: edge.text,
+              targetRectangleRate: edge.targetRectangleRate.clone(),
+              sourceRectangleRate: edge.sourceRectangleRate.clone(),
+              color: edge.color.clone(),
+            }),
+          );
+        });
       });
-    });
-    toLines.forEach((edge) => {
-      newNodes.forEach((newNode) => {
-        project.stageManager.add(
-          new LineEdge(project, {
-            associationList: [newNode, edge.target],
-            text: edge.text,
-            targetRectangleRate: edge.targetRectangleRate.clone(),
-            sourceRectangleRate: edge.sourceRectangleRate.clone(),
-            color: edge.color.clone(),
-          }),
-        );
+      toLines.forEach((edge) => {
+        newNodes.forEach((newNode) => {
+          project.stageManager.add(
+            new LineEdge(project, {
+              associationList: [newNode, edge.target],
+              text: edge.text,
+              targetRectangleRate: edge.targetRectangleRate.clone(),
+              sourceRectangleRate: edge.sourceRectangleRate.clone(),
+              color: edge.color.clone(),
+            }),
+          );
+        });
       });
     });
 

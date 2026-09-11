@@ -35,7 +35,7 @@ export class TreeImporter extends BaseImporter {
     });
     const nodeStack = new MonoStack<TextNode>();
     nodeStack.push(rootNode, -1);
-    this.project.stageManager.add(rootNode);
+    this.project.stageManager.add(rootNode, true);
     // 遍历每一行
     for (let yIndex = 0; yIndex < lines.length; yIndex++) {
       const line = lines[yIndex];
@@ -54,7 +54,7 @@ export class TreeImporter extends BaseImporter {
           new Rectangle(diffLocation.add(new Vector(indent * 50, yIndex * 100)), Vector.same(100)),
         ]),
       });
-      this.project.stageManager.add(node);
+      this.project.stageManager.add(node, true);
 
       // 检查栈
       // 保持一个严格单调栈
@@ -67,9 +67,11 @@ export class TreeImporter extends BaseImporter {
           targetRectangleRate: new Vector(0.01, 0.5), // 目标节点左侧边缘
           sourceRectangleRate: new Vector(0.99, 0.5), // 源节点右侧边缘
         });
-        this.project.stageManager.add(newEdge);
+        this.project.stageManager.add(newEdge, true);
       }
     }
+    // 批量插入期间跳过了引用刷新，这里统一刷新一次
+    this.project.stageManager.updateReferences();
     // 运行树形布局格式化
     this.project.autoLayoutFastTree.autoLayoutFastTreeMode(rootNode);
   }
@@ -125,7 +127,7 @@ export class TreeImporter extends BaseImporter {
           ),
         ]),
       });
-      this.project.stageManager.add(node);
+      this.project.stageManager.add(node, true);
       nodeCount++;
 
       // 检查栈
@@ -139,9 +141,12 @@ export class TreeImporter extends BaseImporter {
           targetRectangleRate: new Vector(0.01, 0.5), // 目标节点左侧边缘
           sourceRectangleRate: new Vector(0.99, 0.5), // 源节点右侧边缘
         });
-        this.project.stageManager.add(newEdge);
+        this.project.stageManager.add(newEdge, true);
       }
     }
+
+    // 批量插入期间跳过了引用刷新，这里统一刷新一次
+    this.project.stageManager.updateReferences();
 
     if (nodeCount > 0) {
       // 运行树形布局格式化

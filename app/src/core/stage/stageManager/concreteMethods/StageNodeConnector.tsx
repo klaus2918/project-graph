@@ -67,7 +67,16 @@ export class NodeConnector {
     this.project.stageManager.add(newEdge);
   }
 
-  connectEntityFast(fromNode: ConnectableEntity, toNode: ConnectableEntity, text: string = ""): void {
+  /**
+   * 快速连线（不做可连接性校验）
+   * @param skipUpdateReferences 批量导入时可置为 true，由调用方在末尾统一刷新引用
+   */
+  connectEntityFast(
+    fromNode: ConnectableEntity,
+    toNode: ConnectableEntity,
+    text: string = "",
+    skipUpdateReferences: boolean = false,
+  ): void {
     const newEdge = new LineEdge(this.project, {
       associationList: [fromNode, toNode],
       text,
@@ -75,7 +84,7 @@ export class NodeConnector {
       sourceRectangleRate: new Vector(0.5, 0.5),
     });
 
-    this.project.stageManager.add(newEdge);
+    this.project.stageManager.add(newEdge, skipUpdateReferences);
   }
 
   addCrEdge(fromNode: ConnectableEntity, toNode: ConnectableEntity): void {

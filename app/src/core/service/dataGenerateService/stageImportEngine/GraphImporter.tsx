@@ -44,7 +44,7 @@ export class GraphImporter extends BaseImporter {
           ),
         ]),
       });
-      this.project.stageManager.add(node);
+      this.project.stageManager.add(node, true);
       nodeDict.set(name, node);
       return node;
     };
@@ -75,7 +75,7 @@ export class GraphImporter extends BaseImporter {
           if (!endNode) {
             endNode = createNodeByName(endName);
           }
-          this.project.nodeConnector.connectEntityFast(startNode, endNode);
+          this.project.nodeConnector.connectEntityFast(startNode, endNode, "", true);
         } else {
           // 连线上有文字
           // 解析
@@ -116,7 +116,7 @@ export class GraphImporter extends BaseImporter {
             // 临时创建一下
             startNode = createNodeByName(startName);
           }
-          this.project.nodeConnector.connectEntityFast(startNode, endNode, edgeText);
+          this.project.nodeConnector.connectEntityFast(startNode, endNode, edgeText, true);
         }
       } else {
         // 这一行是一个节点行
@@ -125,5 +125,7 @@ export class GraphImporter extends BaseImporter {
         createNodeByName(nodeName);
       }
     }
+    // 批量插入期间跳过了引用刷新，这里统一刷新一次
+    this.project.stageManager.updateReferences();
   }
 }

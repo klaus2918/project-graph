@@ -74,9 +74,7 @@ export class MouseInteraction {
     }
     // 更新 MultiTargetUndirectedEdge状态
     this._hoverMultiTargetEdges = [];
-    for (const edge of this.project.stageManager
-      .getAssociations()
-      .filter((association) => association instanceof MultiTargetUndirectedEdge)) {
+    for (const edge of this.project.stageManager.getMultiTargetUndirectedEdges()) {
       if (this.project.sectionMethods.isAssociationCoveredByBigTitleSection(edge)) {
         continue;
       }

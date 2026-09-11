@@ -145,7 +145,7 @@ export class MermaidImporter extends BaseImporter {
         });
       }
 
-      this.project.stageManager.add(entity);
+      this.project.stageManager.add(entity, true);
       entityMap.set(baseId, entity);
       createdEntities.add(entity);
 
@@ -248,6 +248,9 @@ export class MermaidImporter extends BaseImporter {
       section.moveTo(origin);
     };
 
+    // 批量插入期间跳过了引用刷新，布局前先重建一次 Section 树，保证与逐条插入时的中间状态一致
+    this.project.stageManager.updateReferences();
+
     const rootEntities: ConnectableEntity[] = [];
     for (const entity of entityMap.values()) {
       if (!entityParentMap.has(entity)) {
@@ -259,11 +262,13 @@ export class MermaidImporter extends BaseImporter {
 
     for (const { source, target, label } of pendingEdges) {
       if (label) {
-        this.project.nodeConnector.connectEntityFast(source, target, label);
+        this.project.nodeConnector.connectEntityFast(source, target, label, true);
       } else {
-        this.project.nodeConnector.connectEntityFast(source, target);
+        this.project.nodeConnector.connectEntityFast(source, target, "", true);
       }
     }
+    // 批量插入期间跳过了引用刷新，这里统一刷新一次（包含多重边的偏移索引）
+    this.project.stageManager.updateReferences();
 
     for (const section of sectionChildrenMap.keys()) {
       section.adjustLocationAndSize();

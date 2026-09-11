@@ -19,12 +19,15 @@ export namespace ConnectNodeSmartTools {
       .filter((entity) => entity instanceof ConnectableEntity);
     if (selectedNodes.length <= 1) return;
     selectedNodes.sort((a, b) => a.collisionBox.getRectangle().location.y - b.collisionBox.getRectangle().location.y);
-    for (let i = 0; i < selectedNodes.length - 1; i++) {
-      const fromNode = selectedNodes[i];
-      const toNode = selectedNodes[i + 1];
-      if (fromNode === toNode) continue;
-      project.stageManager.connectEntity(fromNode, toNode, false);
-    }
+    // 一次操作可能创建 k-1 条连线，放进批量作用域只刷新一次引用
+    project.stageManager.runBatch(() => {
+      for (let i = 0; i < selectedNodes.length - 1; i++) {
+        const fromNode = selectedNodes[i];
+        const toNode = selectedNodes[i + 1];
+        if (fromNode === toNode) continue;
+        project.stageManager.connectEntity(fromNode, toNode, false);
+      }
+    });
   }
 
   // 向右连接
@@ -34,27 +37,33 @@ export namespace ConnectNodeSmartTools {
       .filter((entity) => entity instanceof ConnectableEntity);
     if (selectedNodes.length <= 1) return;
     selectedNodes.sort((a, b) => a.collisionBox.getRectangle().location.x - b.collisionBox.getRectangle().location.x);
-    for (let i = 0; i < selectedNodes.length - 1; i++) {
-      const fromNode = selectedNodes[i];
-      const toNode = selectedNodes[i + 1];
-      if (fromNode === toNode) continue;
-      project.stageManager.connectEntity(fromNode, toNode, false);
-    }
+    // 一次操作可能创建 k-1 条连线，放进批量作用域只刷新一次引用
+    project.stageManager.runBatch(() => {
+      for (let i = 0; i < selectedNodes.length - 1; i++) {
+        const fromNode = selectedNodes[i];
+        const toNode = selectedNodes[i + 1];
+        if (fromNode === toNode) continue;
+        project.stageManager.connectEntity(fromNode, toNode, false);
+      }
+    });
   }
 
   // 全连接
   export function connectAll(project: Project) {
     const selectedNodes = project.stageManager.getSelectedEntities();
-    for (let i = 0; i < selectedNodes.length; i++) {
-      for (let j = 0; j < selectedNodes.length; j++) {
-        const fromNode = selectedNodes[i];
-        const toNode = selectedNodes[j];
-        if (fromNode === toNode) continue;
-        if (fromNode instanceof ConnectableEntity && toNode instanceof ConnectableEntity) {
-          project.stageManager.connectEntity(fromNode, toNode, false);
+    // 全连接是 O(k²) 条连线，不批量会是 k² 次全量引用刷新（k=40、1500 节点场景实测 5.2s）
+    project.stageManager.runBatch(() => {
+      for (let i = 0; i < selectedNodes.length; i++) {
+        for (let j = 0; j < selectedNodes.length; j++) {
+          const fromNode = selectedNodes[i];
+          const toNode = selectedNodes[j];
+          if (fromNode === toNode) continue;
+          if (fromNode instanceof ConnectableEntity && toNode instanceof ConnectableEntity) {
+            project.stageManager.connectEntity(fromNode, toNode, false);
+          }
         }
       }
-    }
+    });
   }
 
   /**
@@ -96,55 +105,58 @@ export namespace ConnectNodeSmartTools {
       // 删除所有已有的连线
       collideEdges.forEach((edge) => project.stageManager.deleteAssociation(edge));
 
-      if (isMultiEdgesFromSameSource) {
-        // 从同一个源节点出发的多条连线，只创建一条源节点到新节点的连线
-        project.stageManager.add(
-          new LineEdge(project, {
-            associationList: [sourceNode, selectedNode],
-            text: originalEdges[0].text, // 使用第一条连线的文本
-            sourceRectangleRate: originalEdges[0].sourceRectangleRate.clone(), // 继承源节点的端点格式
-            targetRectangleRate: originalEdges[0].targetRectangleRate.clone(), // 左端点接收
-            color: originalEdges[0].color.clone(),
-          }),
-        );
-
-        // 创建从新节点到各个目标节点的连线
-        originalEdges.forEach((originalEdge) => {
-          project.stageManager.add(
-            new LineEdge(project, {
-              associationList: [selectedNode, originalEdge.targetNode],
-              text: originalEdge.text,
-              sourceRectangleRate: originalEdge.sourceRectangleRate.clone(),
-              targetRectangleRate: originalEdge.targetRectangleRate.clone(), // 继承原连线的target端点格式
-              color: originalEdge.color.clone(),
-            }),
-          );
-        });
-      } else {
-        // 处理不同源节点的情况
-        originalEdges.forEach((originalEdge) => {
-          // source -> selected：保持原连线的source端点格式，target端使用左端点接收
+      // 建边可能有很多条（相碰的连线数×分支），放进批量作用域只刷新一次引用
+      project.stageManager.runBatch(() => {
+        if (isMultiEdgesFromSameSource) {
+          // 从同一个源节点出发的多条连线，只创建一条源节点到新节点的连线
           project.stageManager.add(
             new LineEdge(project, {
               associationList: [sourceNode, selectedNode],
-              text: originalEdge.text,
-              sourceRectangleRate: originalEdge.sourceRectangleRate.clone(),
-              targetRectangleRate: originalEdge.targetRectangleRate.clone(),
-              color: originalEdge.color.clone(),
+              text: originalEdges[0].text, // 使用第一条连线的文本
+              sourceRectangleRate: originalEdges[0].sourceRectangleRate.clone(), // 继承源节点的端点格式
+              targetRectangleRate: originalEdges[0].targetRectangleRate.clone(), // 左端点接收
+              color: originalEdges[0].color.clone(),
             }),
           );
-          // selected -> target：source端使用右端点发出，保持原连线的target端点格式
-          project.stageManager.add(
-            new LineEdge(project, {
-              associationList: [selectedNode, originalEdge.targetNode],
-              text: originalEdge.text,
-              sourceRectangleRate: originalEdge.sourceRectangleRate.clone(),
-              targetRectangleRate: originalEdge.targetRectangleRate.clone(),
-              color: originalEdge.color.clone(),
-            }),
-          );
-        });
-      }
+
+          // 创建从新节点到各个目标节点的连线
+          originalEdges.forEach((originalEdge) => {
+            project.stageManager.add(
+              new LineEdge(project, {
+                associationList: [selectedNode, originalEdge.targetNode],
+                text: originalEdge.text,
+                sourceRectangleRate: originalEdge.sourceRectangleRate.clone(),
+                targetRectangleRate: originalEdge.targetRectangleRate.clone(), // 继承原连线的target端点格式
+                color: originalEdge.color.clone(),
+              }),
+            );
+          });
+        } else {
+          // 处理不同源节点的情况
+          originalEdges.forEach((originalEdge) => {
+            // source -> selected：保持原连线的source端点格式，target端使用左端点接收
+            project.stageManager.add(
+              new LineEdge(project, {
+                associationList: [sourceNode, selectedNode],
+                text: originalEdge.text,
+                sourceRectangleRate: originalEdge.sourceRectangleRate.clone(),
+                targetRectangleRate: originalEdge.targetRectangleRate.clone(),
+                color: originalEdge.color.clone(),
+              }),
+            );
+            // selected -> target：source端使用右端点发出，保持原连线的target端点格式
+            project.stageManager.add(
+              new LineEdge(project, {
+                associationList: [selectedNode, originalEdge.targetNode],
+                text: originalEdge.text,
+                sourceRectangleRate: originalEdge.sourceRectangleRate.clone(),
+                targetRectangleRate: originalEdge.targetRectangleRate.clone(),
+                color: originalEdge.color.clone(),
+              }),
+            );
+          });
+        }
+      });
 
       project.historyManager.recordStep();
     } else {
@@ -194,17 +206,20 @@ export namespace ConnectNodeSmartTools {
       [...inEdges, ...outEdges].forEach((edge) => project.stageManager.deleteAssociation(edge));
 
       // 将入边的源节点直接连接到出边的目标节点
-      sourceNodes.forEach((source) => {
-        targetNodes.forEach((target) => {
-          project.stageManager.add(
-            new LineEdge(project, {
-              associationList: [source.node, target.node],
-              text: source.text || target.text,
-              sourceRectangleRate: source.sourceRectangleRate,
-              targetRectangleRate: target.targetRectangleRate,
-              color: source.color || target.color,
-            }),
-          );
+      // 入边×出边可能较多，放进批量作用域只刷新一次引用
+      project.stageManager.runBatch(() => {
+        sourceNodes.forEach((source) => {
+          targetNodes.forEach((target) => {
+            project.stageManager.add(
+              new LineEdge(project, {
+                associationList: [source.node, target.node],
+                text: source.text || target.text,
+                sourceRectangleRate: source.sourceRectangleRate,
+                targetRectangleRate: target.targetRectangleRate,
+                color: source.color || target.color,
+              }),
+            );
+          });
         });
       });
     } else {

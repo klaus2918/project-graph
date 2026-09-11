@@ -62,7 +62,7 @@ export class DeleteManager {
   }
 
   private deleteSvgNode(entity: SvgNode) {
-    if (this.project.stageManager.getEntities().includes(entity)) {
+    if (this.project.stageManager.contains(entity)) {
       this.project.stageManager.delete(entity);
       // 删除所有相关的边
       this.deleteEntityAfterClearAssociation(entity);
@@ -70,7 +70,7 @@ export class DeleteManager {
   }
 
   private deleteLatexNode(entity: LatexNode) {
-    if (this.project.stageManager.getEntities().includes(entity)) {
+    if (this.project.stageManager.contains(entity)) {
       this.project.stageManager.delete(entity);
       // 删除所有相关的边
       this.deleteEntityAfterClearAssociation(entity);
@@ -78,7 +78,7 @@ export class DeleteManager {
   }
 
   private deleteReferenceBlockNode(entity: ReferenceBlockNode) {
-    if (this.project.stageManager.getEntities().includes(entity)) {
+    if (this.project.stageManager.contains(entity)) {
       this.project.stageManager.delete(entity);
       // 删除所有相关的边
       this.deleteEntityAfterClearAssociation(entity);
@@ -86,7 +86,7 @@ export class DeleteManager {
   }
 
   private deleteExtensionEntity(entity: ExtensionEntity) {
-    if (this.project.stageManager.getEntities().includes(entity)) {
+    if (this.project.stageManager.contains(entity)) {
       this.project.stageManager.delete(entity);
       // 删除所有相关的边
       this.deleteEntityAfterClearAssociation(entity);
@@ -94,13 +94,13 @@ export class DeleteManager {
   }
 
   private deletePenStroke(penStroke: PenStroke) {
-    if (this.project.stageManager.getPenStrokes().includes(penStroke)) {
+    if (this.project.stageManager.contains(penStroke)) {
       this.project.stageManager.delete(penStroke);
     }
   }
 
   private deleteSection(entity: Section) {
-    if (!this.project.stageManager.getSections().includes(entity)) {
+    if (!this.project.stageManager.contains(entity)) {
       console.warn("section not in sections!!!", entity.uuid);
       return;
     }
@@ -122,7 +122,7 @@ export class DeleteManager {
     }
   }
   private deleteImageNode(entity: ImageNode) {
-    if (this.project.stageManager.getImageNodes().includes(entity)) {
+    if (this.project.stageManager.contains(entity)) {
       this.project.stageManager.delete(entity);
       this.project.effects.addEffect(
         new ExplodeDashEffect(new ProgressNumber(0, 30), entity.collisionBox.getRectangle(), Color.White),
@@ -132,7 +132,7 @@ export class DeleteManager {
     }
   }
   private deleteUrlNode(entity: UrlNode) {
-    if (this.project.stageManager.getUrlNodes().includes(entity)) {
+    if (this.project.stageManager.contains(entity)) {
       this.project.stageManager.delete(entity);
       // 删除所有相关的边
       this.deleteEntityAfterClearAssociation(entity);
@@ -141,7 +141,7 @@ export class DeleteManager {
 
   private deleteConnectPoint(entity: ConnectPoint) {
     // 先判断这个node是否在nodes里
-    if (this.project.stageManager.getConnectPoints().includes(entity)) {
+    if (this.project.stageManager.contains(entity)) {
       // 从数组中去除
       this.project.stageManager.delete(entity);
       this.project.effects.addEffect(

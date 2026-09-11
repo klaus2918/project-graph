@@ -39,7 +39,7 @@ export class StageSyncAssociationManager {
    * 获取所有 SyncAssociation 对象
    */
   public getSyncAssociations(): SyncAssociation[] {
-    return this.project.stage.filter((obj) => obj instanceof SyncAssociation) as SyncAssociation[];
+    return this.project.stageManager.getSyncAssociations();
   }
 
   /**

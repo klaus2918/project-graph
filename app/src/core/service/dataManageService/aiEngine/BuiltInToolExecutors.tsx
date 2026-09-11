@@ -573,31 +573,34 @@ addExecutor("breadth_expand_node", () => (project, { ref, texts }, references) =
 
   const results: Array<{ text: string; ref?: string; success: boolean; error?: string }> = [];
 
-  for (let i = 0; i < texts.length; i++) {
-    const text = texts[i];
-    try {
-      const node = new TextNode(project, {
-        text,
-        color: new Color(0, 0, 0, 0), // 透明
-        collisionBox: new CollisionBox([
-          new Rectangle(new Vector(startX, startY + i * verticalSpacing), new Vector(100, 50)),
-        ]),
-        sizeAdjust: "auto" as "auto" | "manual",
-      });
-      project.stageManager.add(node);
+  // 批量为一个源节点建多个平级节点，放进批量作用域只刷新一次引用
+  project.stageManager.runBatch(() => {
+    for (let i = 0; i < texts.length; i++) {
+      const text = texts[i];
+      try {
+        const node = new TextNode(project, {
+          text,
+          color: new Color(0, 0, 0, 0), // 透明
+          collisionBox: new CollisionBox([
+            new Rectangle(new Vector(startX, startY + i * verticalSpacing), new Vector(100, 50)),
+          ]),
+          sizeAdjust: "auto" as "auto" | "manual",
+        });
+        project.stageManager.add(node);
 
-      // 创建连线
-      project.nodeConnector.connectConnectableEntity(sourceNode, node, "");
+        // 创建连线
+        project.nodeConnector.connectConnectableEntity(sourceNode, node, "");
 
-      results.push({ text, ref: references.getOrCreateRef(node), success: true });
-    } catch (error) {
-      results.push({
-        text,
-        success: false,
-        error: error instanceof Error ? error.message : "创建节点失败",
-      });
+        results.push({ text, ref: references.getOrCreateRef(node), success: true });
+      } catch (error) {
+        results.push({
+          text,
+          success: false,
+          error: error instanceof Error ? error.message : "创建节点失败",
+        });
+      }
     }
-  }
+  });
 
   if (results.some((r) => r.success)) {
     project.historyManager.recordStep();
@@ -617,37 +620,40 @@ addExecutor("depth_expand_node", () => (project, { ref, texts }, references) => 
   let currentNode = rootNode;
   const horizontalSpacing = 150;
 
-  for (let i = 0; i < texts.length; i++) {
-    const text = texts[i];
-    try {
-      const currentRect = currentNode.collisionBox.getRectangle();
-      const node = new TextNode(project, {
-        text,
-        color: new Color(0, 0, 0, 0), // 透明
-        collisionBox: new CollisionBox([
-          new Rectangle(
-            new Vector(currentRect.location.x + horizontalSpacing, currentRect.location.y),
-            new Vector(100, 50),
-          ),
-        ]),
-        sizeAdjust: "auto" as "auto" | "manual",
-      });
-      project.stageManager.add(node);
+  // 链式建节点，放进批量作用域只刷新一次引用（循环内只读碰撞箱，不依赖派生数据）
+  project.stageManager.runBatch(() => {
+    for (let i = 0; i < texts.length; i++) {
+      const text = texts[i];
+      try {
+        const currentRect = currentNode.collisionBox.getRectangle();
+        const node = new TextNode(project, {
+          text,
+          color: new Color(0, 0, 0, 0), // 透明
+          collisionBox: new CollisionBox([
+            new Rectangle(
+              new Vector(currentRect.location.x + horizontalSpacing, currentRect.location.y),
+              new Vector(100, 50),
+            ),
+          ]),
+          sizeAdjust: "auto" as "auto" | "manual",
+        });
+        project.stageManager.add(node);
 
-      // 创建连线：从前一个节点连接到新节点
-      project.nodeConnector.connectConnectableEntity(currentNode, node, "");
+        // 创建连线：从前一个节点连接到新节点
+        project.nodeConnector.connectConnectableEntity(currentNode, node, "");
 
-      results.push({ text, ref: references.getOrCreateRef(node), success: true });
-      currentNode = node; // 更新当前节点为新建的节点，继续链式扩展
-    } catch (error) {
-      results.push({
-        text,
-        success: false,
-        error: error instanceof Error ? error.message : "创建节点失败",
-      });
-      break; // 链式结构中一旦失败就停止
+        results.push({ text, ref: references.getOrCreateRef(node), success: true });
+        currentNode = node; // 更新当前节点为新建的节点，继续链式扩展
+      } catch (error) {
+        results.push({
+          text,
+          success: false,
+          error: error instanceof Error ? error.message : "创建节点失败",
+        });
+        break; // 链式结构中一旦失败就停止
+      }
     }
-  }
+  });
 
   if (results.some((r) => r.success)) {
     project.historyManager.recordStep();

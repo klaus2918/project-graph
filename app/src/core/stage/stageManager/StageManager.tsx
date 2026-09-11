@@ -12,6 +12,7 @@ import { CubicCatmullRomSplineEdge } from "@/core/stage/stageObject/association/
 import { Edge } from "@/core/stage/stageObject/association/Edge";
 import { LineEdge } from "@/core/stage/stageObject/association/LineEdge";
 import { MultiTargetUndirectedEdge } from "@/core/stage/stageObject/association/MutiTargetUndirectedEdge";
+import { SyncAssociation } from "@/core/stage/stageObject/association/SyncAssociation";
 import { ConnectPoint } from "@/core/stage/stageObject/entity/ConnectPoint";
 import { ImageNode } from "@/core/stage/stageObject/entity/ImageNode";
 import { LatexNode } from "@/core/stage/stageObject/entity/LatexNode";
@@ -25,6 +26,7 @@ import { Direction } from "@/types/directions";
 import { Vector } from "@graphif/data-structures";
 import { Rectangle } from "@graphif/shapes";
 import { toast } from "sonner";
+import { StageObjectIndex } from "./StageObjectIndex";
 
 // littlefean:应该改成类，实例化的对象绑定到舞台上。这成单例模式了
 // 开发过程中会造成多开
@@ -76,6 +78,18 @@ export class StageManager {
 
   constructor(private readonly project: Project) {}
 
+  /**
+   * 舞台对象的派生索引：按类型分桶 + uuid 映射。
+   * 所有按类型/按 uuid 的查询都走这里，避免每次调用都全量扫描 `project.stage`。
+   */
+  private readonly stageObjectIndex = new StageObjectIndex();
+
+  /** 确保索引与当前舞台数组一致后返回 */
+  private get index(): StageObjectIndex {
+    this.stageObjectIndex.ensure(this.project.stage);
+    return this.stageObjectIndex;
+  }
+
   public getRootSections(): Section[] {
     return [...this.rootSections];
   }
@@ -89,58 +103,59 @@ export class StageManager {
   }
 
   /**
-   * TODO: 这个get方法在2.0从O(1)变成O(N)了，可能是引起卡顿的原因，后面待排查
+   * 按 uuid 查找舞台对象。
+   * 走索引查表，O(1)。原实现是 `stage.find`（O(N)），在渲染等热点里会被反复调用。
    * @param uuid
    * @returns
    */
   get(uuid: string) {
-    return this.project.stage.find((node) => node.uuid === uuid);
+    return this.index.byUuid.get(uuid);
   }
 
   isEmpty(): boolean {
     return this.project.stage.length === 0;
   }
   getTextNodes(): TextNode[] {
-    return this.project.stage.filter((node) => node instanceof TextNode);
+    return [...this.index.textNodes];
   }
   getConnectableEntity(): ConnectableEntity[] {
-    return this.project.stage.filter((node) => {
-      if (node instanceof ConnectableEntity) {
-        // 排除背景图片
-        if (node instanceof ImageNode && (node as ImageNode).isBackground) {
-          return false;
-        }
-        return true;
-      }
-      return false;
-    }) as ConnectableEntity[];
+    // 背景图不参与连线；该过滤依赖运行时可变的 ImageNode.isBackground，因此放在调用时做
+    return this.index.connectableEntities.filter((node) => !(node instanceof ImageNode && node.isBackground));
   }
   isEntityExists(uuid: string): boolean {
-    return this.project.stage.filter((node) => node.uuid === uuid).length > 0;
+    return this.index.byUuid.has(uuid);
+  }
+
+  /**
+   * 判断某个舞台对象是否确实还在舞台上（先按 uuid 定位，再比引用）。
+   * 等价于原先的 `getEntities().includes(obj)` 之类写法，但为 O(1)。
+   */
+  contains(stageObject: StageObject): boolean {
+    return this.index.byUuid.get(stageObject.uuid) === stageObject;
   }
   getSections(): Section[] {
-    return this.project.stage.filter((node) => node instanceof Section);
+    return [...this.index.sections];
   }
   getImageNodes(): ImageNode[] {
-    return this.project.stage.filter((node) => node instanceof ImageNode);
+    return [...this.index.imageNodes];
   }
   getConnectPoints(): ConnectPoint[] {
-    return this.project.stage.filter((node) => node instanceof ConnectPoint);
+    return [...this.index.connectPoints];
   }
   getUrlNodes(): UrlNode[] {
-    return this.project.stage.filter((node) => node instanceof UrlNode);
+    return [...this.index.urlNodes];
   }
   // getPortalNodes(): PortalNode[] {
   //   return this.project.stage.filter((node) => node instanceof PortalNode);
   // }
   getPenStrokes(): PenStroke[] {
-    return this.project.stage.filter((node) => node instanceof PenStroke);
+    return [...this.index.penStrokes];
   }
   getSvgNodes(): SvgNode[] {
-    return this.project.stage.filter((node) => node instanceof SvgNode);
+    return [...this.index.svgNodes];
   }
   getLatexNodes(): LatexNode[] {
-    return this.project.stage.filter((node) => node instanceof LatexNode) as LatexNode[];
+    return [...this.index.latexNodes];
   }
 
   getStageObjects(): StageObject[] {
@@ -152,37 +167,75 @@ export class StageManager {
    * @returns
    */
   getEntities(): Entity[] {
-    return this.project.stage.filter((node) => node instanceof Entity);
+    return [...this.index.entities];
   }
   getEntitiesByUUIDs(uuids: string[]): Entity[] {
-    return this.project.stage.filter((node) => uuids.includes(node.uuid) && node instanceof Entity) as Entity[];
+    const uuidSet = new Set(uuids);
+    return this.index.entities.filter((node) => uuidSet.has(node.uuid));
   }
   isNoEntity(): boolean {
-    return this.project.stage.filter((node) => node instanceof Entity).length === 0;
+    return this.index.entities.length === 0;
   }
   delete(stageObject: StageObject) {
     this.project.stage.splice(this.project.stage.indexOf(stageObject), 1);
   }
 
   getAssociations(): Association[] {
-    return this.project.stage.filter((node) => node instanceof Association);
+    return [...this.index.associations];
   }
   getEdges(): Edge[] {
-    return this.project.stage.filter((node) => node instanceof Edge);
+    return [...this.index.edges];
   }
   getLineEdges(): LineEdge[] {
-    return this.project.stage.filter((node) => node instanceof LineEdge);
+    return [...this.index.lineEdges];
   }
   getCrEdges(): CubicCatmullRomSplineEdge[] {
-    return this.project.stage.filter((node) => node instanceof CubicCatmullRomSplineEdge);
+    return [...this.index.crEdges];
   }
   getArcEdges(): ArcEdge[] {
-    return this.project.stage.filter((node) => node instanceof ArcEdge);
+    return [...this.index.arcEdges];
+  }
+  getMultiTargetUndirectedEdges(): MultiTargetUndirectedEdge[] {
+    return [...this.index.multiTargetUndirectedEdges];
+  }
+  getSyncAssociations(): SyncAssociation[] {
+    return [...this.index.syncAssociations];
+  }
+
+  /**
+   * 批量作用域嵌套深度。
+   * 大于 0 时 `add()` 会跳过引用刷新，交由最外层作用域结束时统一刷新一次。
+   */
+  private batchDepth = 0;
+
+  /**
+   * 批量操作作用域。
+   *
+   * 一次用户操作（例如"按分隔符拆分文本节点"）可能创建 k 个节点和 m×k 条连线，
+   * 若每次都触发 `updateReferences()`（O(N) 且常数不小），整批就是 O(k·N)。
+   * 放进本作用域后，中间过程的插入不再刷新，退出时只刷新一次。
+   *
+   * 注意：作用域内部**不能**依赖 `updateReferences()` 维护的派生数据
+   * （`parentSection` / `topLevelEntities` / `rootSections` / 分组树）；
+   * 如果确实需要，请在作用域结束后再读。
+   */
+  runBatch<T>(operation: () => T): T {
+    if (this.batchDepth > 0) {
+      // 嵌套时由最外层统一刷新，保证"一次刷新"而不是每层各刷一次
+      return operation();
+    }
+    this.batchDepth++;
+    try {
+      return operation();
+    } finally {
+      this.batchDepth--;
+      this.updateReferences();
+    }
   }
 
   add(stageObject: StageObject, skipUpdateReferences = false) {
     this.project.stage.push(stageObject);
-    if (!skipUpdateReferences) {
+    if (!skipUpdateReferences && this.batchDepth === 0) {
       this.updateReferences();
     }
   }
@@ -195,18 +248,28 @@ export class StageManager {
    * 包含了对Edge几何组偏移索引的更新（多重边/双向边自动散开）
    */
   updateReferences() {
+    // 建立 uuid → 实体 映射，把原先“实体 × 关系”的二重循环降为一次线性遍历。
+    // 重复 uuid 时保留先出现的那个，与原实现（外层按 stage 顺序取第一个匹配实体）语义一致。
+    const entityByUuid = new Map<string, Entity>();
     for (const entity of this.getEntities()) {
-      // 实体是可连接类型
-      if (entity instanceof ConnectableEntity) {
-        for (const edge of this.getAssociations()) {
-          if (edge instanceof Edge) {
-            if (edge.source.unknown && edge.source.uuid === entity.uuid) {
-              edge.source = entity;
-            }
-            if (edge.target.unknown && edge.target.uuid === entity.uuid) {
-              edge.target = entity;
-            }
-          }
+      if (!entityByUuid.has(entity.uuid)) {
+        entityByUuid.set(entity.uuid, entity);
+      }
+    }
+    for (const association of this.getAssociations()) {
+      if (!(association instanceof Edge)) {
+        continue;
+      }
+      if (association.source.unknown) {
+        const resolved = entityByUuid.get(association.source.uuid);
+        if (resolved instanceof ConnectableEntity) {
+          association.source = resolved;
+        }
+      }
+      if (association.target.unknown) {
+        const resolved = entityByUuid.get(association.target.uuid);
+        if (resolved instanceof ConnectableEntity) {
+          association.target = resolved;
         }
       }
     }
@@ -388,23 +451,22 @@ export class StageManager {
   }
 
   getTextNodeByUUID(uuid: string): TextNode | null {
-    for (const node of this.getTextNodes()) {
-      if (node.uuid === uuid) {
-        return node;
-      }
-    }
-    return null;
+    const entity = this.index.getEntityByUuid(uuid);
+    return entity instanceof TextNode ? entity : null;
   }
   getConnectableEntityByUUID(uuid: string): ConnectableEntity | null {
-    for (const node of this.getConnectableEntity()) {
-      if (node.uuid === uuid) {
-        return node;
-      }
+    const entity = this.index.getConnectableEntityByUuid(uuid);
+    if (!entity) {
+      return null;
     }
-    return null;
+    // 背景图不参与连线
+    if (entity instanceof ImageNode && entity.isBackground) {
+      return null;
+    }
+    return entity;
   }
   isSectionByUUID(uuid: string): boolean {
-    return this.project.stage.find((node) => node.uuid === uuid) instanceof Section;
+    return this.get(uuid) instanceof Section;
   }
   getSectionByUUID(uuid: string): Section | null {
     const entity = this.get(uuid);
@@ -632,12 +694,10 @@ export class StageManager {
    * @returns
    */
   getSelectedEntities(): Entity[] {
-    return this.project.stage.filter(
-      (so) => so.isSelected && so instanceof Entity && !(so instanceof ImageNode && (so as ImageNode).isBackground),
-    ) as Entity[];
+    return this.index.entities.filter((so) => so.isSelected && !(so instanceof ImageNode && so.isBackground));
   }
   getSelectedAssociations(): Association[] {
-    return this.project.stage.filter((so) => so.isSelected && so instanceof Association) as Association[];
+    return this.index.associations.filter((so) => so.isSelected);
   }
   getSelectedStageObjects(): StageObject[] {
     const result: StageObject[] = [];
