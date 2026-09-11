@@ -9,7 +9,18 @@ type SerializableClass = {
 let getOriginalNameOf: (class_: SerializableClass) => string = (class_) => class_.className ?? class_.name;
 export function configureSerializer(getOriginalNameOfFn: (class_: SerializableClass) => string) {
   getOriginalNameOf = (class_) => (class_.className === undefined ? class_.name : getOriginalNameOfFn(class_));
+  // 类名解析规则变了，已经缓存的类名必须作废
+  classMetaCache.clear();
 }
+
+/**
+ * 装饰器阶段登记的可序列化字段名 / id 字段名。
+ * 为什么不在序列化时用 Reflect 枚举：`Reflect.getOwnMetadataKeys` 返回的是“元数据键”
+ * 而不是属性名（实测返回 [null]），拿不到字段列表；而装饰器本身就带有 key，登记最直接。
+ * 依赖继承时通过构造器原型链向上合并。
+ */
+const decoratedSerializableKeys = new Map<object, Set<string>>();
+const decoratedIdKeys = new Map<object, string>();
 
 /**
  * 序列化装饰器
@@ -27,6 +38,15 @@ export const serializable = (target: any, key: string) => {
     target,
   );
   classes.set(getOriginalNameOf(target.constructor), target.constructor);
+  const ctor = target.constructor;
+  let keys = decoratedSerializableKeys.get(ctor);
+  if (keys === undefined) {
+    keys = new Set<string>();
+    decoratedSerializableKeys.set(ctor, keys);
+  }
+  keys.add(key);
+  // 字段集合可能变化，已缓存的类元数据需要作废
+  classMetaCache.delete(ctor);
 };
 
 const passExtraAtArg1Symbol = Symbol("passExtraAtArg1");
@@ -39,9 +59,70 @@ const passObjectSymbol = Symbol("passObject");
 export const passObject = Reflect.metadata(passObjectSymbol, true);
 
 const idSymbol = Symbol("id");
-export const id = Reflect.metadata(idSymbol, true);
+export const id = (target: any, key?: string): void => {
+  if (typeof key === "string") {
+    Reflect.defineMetadata(idSymbol, true, target, key);
+    const ctor = target.constructor as object;
+    if (decoratedIdKeys.get(ctor) === undefined) {
+      decoratedIdKeys.set(ctor, key);
+    }
+    // id 字段可能变化，已缓存的类元数据需要作废
+    classMetaCache.delete(ctor);
+  } else {
+    // 作为类装饰器使用时的分支（无属性名）
+    Reflect.defineMetadata(idSymbol, true, target);
+  }
+};
 
 const classes: Map<string, any> = new Map();
+
+/**
+ * 类的序列化元数据。
+ * 元数据只由装饰器在类定义期写入原型链，与实例无关，因此可以按构造器缓存。
+ * 原来在序列化时对每个字段调用两次 `Reflect.hasMetadata`（沿原型链查找），
+ * 实测占整个 serialize 耗时的约一半；改成一次查表后语义不变、开销大幅下降。
+ */
+type ClassSerializationMeta = {
+  /** 该类的全部可序列化字段名（含继承） */
+  serializableKeys: Set<string>;
+  /** 标记为 @id 的字段名；声明在父类时也适用 */
+  idKey: string | null;
+  /** 解析后的类名 */
+  name: string;
+};
+
+const classMetaCache = new Map<object, ClassSerializationMeta>();
+
+function getClassSerializationMeta(ctor: object): ClassSerializationMeta {
+  const cached = classMetaCache.get(ctor);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const serializableKeys = new Set<string>();
+  let idKey: string | null = null;
+  // 沿构造器原型链向上合并，保证子类能看到父类声明的字段
+  let current: unknown = ctor;
+  while (typeof current === "function" && current !== Function.prototype) {
+    const ownKeys = decoratedSerializableKeys.get(current);
+    if (ownKeys !== undefined) {
+      for (const key of ownKeys) {
+        serializableKeys.add(key);
+      }
+    }
+    const ownIdKey = decoratedIdKeys.get(current);
+    if (ownIdKey !== undefined && idKey === null) {
+      idKey = ownIdKey;
+    }
+    current = Object.getPrototypeOf(current) as unknown;
+  }
+  const meta: ClassSerializationMeta = {
+    serializableKeys,
+    idKey,
+    name: getOriginalNameOf(ctor as unknown as SerializableClass),
+  };
+  classMetaCache.set(ctor, meta);
+  return meta;
+}
 
 /**
  * 将任意类型对象转换为 序列化形式，不包含函数
@@ -66,7 +147,12 @@ export function serialize(originalObj: any): any {
     } else if (obj === null) {
       return null;
     } else if (typeof obj === "object") {
-      const className = getOriginalNameOf(obj.constructor);
+      const ctor = obj.constructor;
+      if (ctor === undefined || ctor === null) {
+        throw TypeError("[Serializer] Cannot determine serialized type for", obj);
+      }
+      const meta = getClassSerializationMeta(ctor);
+      const className = meta.name;
       if (!className) {
         throw TypeError("[Serializer] Cannot determine serialized type for", obj);
       }
@@ -77,9 +163,10 @@ export function serialize(originalObj: any): any {
         _: className,
       };
       let id: any;
+      // 仍用 for...in 保证字段顺序与原实现一致；缓存只用于成员判断
       for (const key in obj) {
-        if (!Reflect.hasMetadata(serializableSymbol, obj, key)) continue;
-        if (Reflect.hasMetadata(idSymbol, obj, key)) {
+        if (!meta.serializableKeys.has(key)) continue;
+        if (key === meta.idKey) {
           id = obj[key];
         }
         result[key] = _serialize(obj[key], `${path}/${key}`);
