@@ -901,119 +901,126 @@ describe("Open Project Runtime Host", () => {
     await host.dispose();
   });
 
-  it("serves live mutation, selection, and viewport tools without saving or changing desktop context", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "project-graph-desktop-host-"));
-    const projectPath = join(directory, "graph.prg");
-    const symlinkPath = join(directory, "graph-link.prg");
-    writeFileSync(projectPath, "persisted fallback sentinel");
-    symlinkSync(projectPath, symlinkPath);
-    const canonicalPath = realpathSync.native(projectPath);
-    const persistedBefore = readFileSync(projectPath);
-    const fixture = createLiveProject(canonicalPath, false);
-    fixture.project.projectState = ProjectState.Saved;
-    const foregroundProject = new Project(URI.parse("draft:foreground"));
-    Object.assign(foregroundProject, { camera: { location: new Vector(900, 700) } });
-    store.set(tabsAtom, [foregroundProject, fixture.project]);
-    store.set(activeTabAtom, foregroundProject);
-    const focusedElement = document.createElement("input");
-    document.body.append(focusedElement);
-    focusedElement.focus();
-    const tabsBefore = store.get(tabsAtom);
-    const foregroundCameraBefore = foregroundProject.camera.location.clone();
-    const runtimeHost = new OpenProjectRuntimeHost(fixture.project);
-    const bridge = await startDesktopRuntimeBridge(canonicalPath, runtimeHost);
-
-    try {
-      const result = await runCli("tool", "invoke", "get_all_nodes", "--project", symlinkPath, "--input", "{}");
-      expect(result).toMatchObject({ status: 0, stderr: "" });
-      const value = JSON.parse(result.stdout) as { objects: Array<Record<string, unknown>> };
-
-      const selection = await runCli(
-        "tool",
-        "invoke",
-        "select_objects",
-        "--project",
-        symlinkPath,
-        "--input",
-        '{"refs":["n1"],"clearOthers":true}',
-      );
-      const selectedRefs = await runCli(
-        "tool",
-        "invoke",
-        "get_selected_refs",
-        "--project",
-        symlinkPath,
-        "--input",
-        "{}",
-      );
-      const viewport = await runCli(
-        "tool",
-        "invoke",
-        "get_nodes_in_viewport",
-        "--project",
-        symlinkPath,
-        "--input",
-        "{}",
-      );
-
-      fixture.node.isSelected = false;
+  // 该用例依赖 POSIX 的 lockf/sleep 构造“不可连接的持有者”（见 startDesktopRuntimeBridge），
+  // Windows 无此工具，与 ProjectGraphCli.test.ts 中既有的 win32 守卫保持一致。
+  it.skipIf(process.platform === "win32")(
+    "serves live mutation, selection, and viewport tools without saving or changing desktop context",
+    async () => {
+      const directory = mkdtempSync(join(tmpdir(), "project-graph-desktop-host-"));
+      const projectPath = join(directory, "graph.prg");
+      const symlinkPath = join(directory, "graph-link.prg");
+      writeFileSync(projectPath, "persisted fallback sentinel");
+      symlinkSync(projectPath, symlinkPath);
+      const canonicalPath = realpathSync.native(projectPath);
+      const persistedBefore = readFileSync(projectPath);
+      const fixture = createLiveProject(canonicalPath, false);
       fixture.project.projectState = ProjectState.Saved;
-      const partialFailure = await runCli(
-        "tool",
-        "invoke",
-        "select_objects",
-        "--project",
-        symlinkPath,
-        "--input",
-        '{"refs":["n1","n99"]}',
-      );
-      const mutation = await runCli(
-        "tool",
-        "invoke",
-        "delete_node",
-        "--project",
-        symlinkPath,
-        "--input",
-        '{"ref":"n1"}',
-      );
+      const foregroundProject = new Project(URI.parse("draft:foreground"));
+      Object.assign(foregroundProject, { camera: { location: new Vector(900, 700) } });
+      store.set(tabsAtom, [foregroundProject, fixture.project]);
+      store.set(activeTabAtom, foregroundProject);
+      const focusedElement = document.createElement("input");
+      document.body.append(focusedElement);
+      focusedElement.focus();
+      const tabsBefore = store.get(tabsAtom);
+      const foregroundCameraBefore = foregroundProject.camera.location.clone();
+      const runtimeHost = new OpenProjectRuntimeHost(fixture.project);
+      const bridge = await startDesktopRuntimeBridge(canonicalPath, runtimeHost);
 
-      expect(value.objects).toEqual([
-        expect.objectContaining({ ref: "n1", type: "ConnectableEntity", position: { x: 10, y: 20 } }),
-      ]);
-      expect(selection).toMatchObject({ status: 0, stdout: '{"selectedCount":1}\n', stderr: "" });
-      expect(selectedRefs).toMatchObject({ status: 0, stdout: '{"refs":["n1"]}\n', stderr: "" });
-      expect(JSON.parse(viewport.stdout)).toEqual({
-        nodes: [expect.objectContaining({ ref: "n1", position: { x: 10, y: 20 } })],
-      });
-      expect(partialFailure).toMatchObject({
-        status: 1,
-        stdout: "",
-        stderr: '{"code":"unknown_ref","message":"Project Object Reference does not exist.","details":{"ref":"n99"}}\n',
-      });
-      expect(mutation).toMatchObject({
-        status: 0,
-        stdout: '{"deletedNodeCount":1,"deletedAssociationCount":0}\n',
-        stderr: "",
-      });
-      expect(fixture.node.isSelected).toBe(true);
-      expect(fixture.project.stage).toEqual([]);
-      expect(fixture.project.projectState).toBe(ProjectState.Unsaved);
-      expect(readFileSync(projectPath)).toEqual(persistedBefore);
-      expect(fixture.project.save).not.toHaveBeenCalled();
-      expect(store.get(tabsAtom)).toEqual(tabsBefore);
-      expect(store.get(activeTabAtom)).toBe(foregroundProject);
-      expect(foregroundProject.camera.location).toEqual(foregroundCameraBefore);
-      expect(document.activeElement).toBe(focusedElement);
-      expect(
-        spawnSync("/usr/bin/lockf", ["-k", "-s", "-t", "0", bridge.ownershipLockPath, "/usr/bin/true"]).status,
-      ).toBe(75);
-    } finally {
-      bridge.close();
-      await runtimeHost.dispose();
-      store.set(activeTabAtom, undefined);
-      store.set(tabsAtom, []);
-      focusedElement.remove();
-      rmSync(directory, { recursive: true, force: true });
-    }
-  }, 15_000);
+      try {
+        const result = await runCli("tool", "invoke", "get_all_nodes", "--project", symlinkPath, "--input", "{}");
+        expect(result).toMatchObject({ status: 0, stderr: "" });
+        const value = JSON.parse(result.stdout) as { objects: Array<Record<string, unknown>> };
+
+        const selection = await runCli(
+          "tool",
+          "invoke",
+          "select_objects",
+          "--project",
+          symlinkPath,
+          "--input",
+          '{"refs":["n1"],"clearOthers":true}',
+        );
+        const selectedRefs = await runCli(
+          "tool",
+          "invoke",
+          "get_selected_refs",
+          "--project",
+          symlinkPath,
+          "--input",
+          "{}",
+        );
+        const viewport = await runCli(
+          "tool",
+          "invoke",
+          "get_nodes_in_viewport",
+          "--project",
+          symlinkPath,
+          "--input",
+          "{}",
+        );
+
+        fixture.node.isSelected = false;
+        fixture.project.projectState = ProjectState.Saved;
+        const partialFailure = await runCli(
+          "tool",
+          "invoke",
+          "select_objects",
+          "--project",
+          symlinkPath,
+          "--input",
+          '{"refs":["n1","n99"]}',
+        );
+        const mutation = await runCli(
+          "tool",
+          "invoke",
+          "delete_node",
+          "--project",
+          symlinkPath,
+          "--input",
+          '{"ref":"n1"}',
+        );
+
+        expect(value.objects).toEqual([
+          expect.objectContaining({ ref: "n1", type: "ConnectableEntity", position: { x: 10, y: 20 } }),
+        ]);
+        expect(selection).toMatchObject({ status: 0, stdout: '{"selectedCount":1}\n', stderr: "" });
+        expect(selectedRefs).toMatchObject({ status: 0, stdout: '{"refs":["n1"]}\n', stderr: "" });
+        expect(JSON.parse(viewport.stdout)).toEqual({
+          nodes: [expect.objectContaining({ ref: "n1", position: { x: 10, y: 20 } })],
+        });
+        expect(partialFailure).toMatchObject({
+          status: 1,
+          stdout: "",
+          stderr:
+            '{"code":"unknown_ref","message":"Project Object Reference does not exist.","details":{"ref":"n99"}}\n',
+        });
+        expect(mutation).toMatchObject({
+          status: 0,
+          stdout: '{"deletedNodeCount":1,"deletedAssociationCount":0}\n',
+          stderr: "",
+        });
+        expect(fixture.node.isSelected).toBe(true);
+        expect(fixture.project.stage).toEqual([]);
+        expect(fixture.project.projectState).toBe(ProjectState.Unsaved);
+        expect(readFileSync(projectPath)).toEqual(persistedBefore);
+        expect(fixture.project.save).not.toHaveBeenCalled();
+        expect(store.get(tabsAtom)).toEqual(tabsBefore);
+        expect(store.get(activeTabAtom)).toBe(foregroundProject);
+        expect(foregroundProject.camera.location).toEqual(foregroundCameraBefore);
+        expect(document.activeElement).toBe(focusedElement);
+        expect(
+          spawnSync("/usr/bin/lockf", ["-k", "-s", "-t", "0", bridge.ownershipLockPath, "/usr/bin/true"]).status,
+        ).toBe(75);
+      } finally {
+        bridge.close();
+        await runtimeHost.dispose();
+        store.set(activeTabAtom, undefined);
+        store.set(tabsAtom, []);
+        focusedElement.remove();
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+    15_000,
+  );
 });

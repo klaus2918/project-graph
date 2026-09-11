@@ -15,6 +15,11 @@ const ownershipHelperPath = fileURLToPath(
   ),
 );
 const temporaryDirectories: string[] = [];
+// 该套件的前置：已构建的 Rust helper（materialize:cli 会对其 accessSync 并拷贝），
+// 以及 materialize:cli 内部执行的 vite 构建。缺前置时整体跳过，
+// 而不是把“缺构建产物”误报为逻辑失败。
+// 构建命令：cargo build --manifest-path app/src-tauri/Cargo.toml --bin project-graph-ownership-helper
+const ownershipHelperAvailable = existsSync(ownershipHelperPath);
 
 function materializeProductionRuntime(version: string): string {
   const outputDirectory = mkdtempSync(join(tmpdir(), "project-graph-production-cli-"));
@@ -58,7 +63,7 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-describe("Project Graph production CLI runtime", () => {
+describe.skipIf(!ownershipHelperAvailable)("Project Graph production CLI runtime", () => {
   it("refuses to materialize over existing output", () => {
     const outputDirectory = mkdtempSync(join(tmpdir(), "project-graph-production-cli-nonempty-"));
     temporaryDirectories.push(outputDirectory);

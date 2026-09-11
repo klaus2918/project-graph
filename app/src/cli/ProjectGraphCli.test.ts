@@ -37,6 +37,11 @@ const temporaryDirectories: string[] = [];
 let referenceStorePath: string | undefined;
 let ownershipDirectory: string | undefined;
 const productionEntry = process.env.PROJECT_GRAPH_CLI_TEST_PRODUCTION === "1";
+// 该套件通过 PROJECT_GRAPH_OWNERSHIP_HELPER_PATH 指向真实的 Rust helper
+// （app/src-tauri/src/bin/project-graph-ownership-helper.rs，需先构建）。
+// 未构建时缺此构建产物，套件整体跳过而不是报逻辑失败；
+// 构建命令：cargo build --manifest-path app/src-tauri/Cargo.toml --bin project-graph-ownership-helper
+const ownershipHelperAvailable = existsSync(ownershipHelperPath);
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -399,7 +404,7 @@ async function createCancellableOpenProjectHost(projectPath: string) {
   };
 }
 
-describe("Project Graph CLI process contract", () => {
+describe.skipIf(!ownershipHelperAvailable)("Project Graph CLI process contract", () => {
   it("prints standard help without protocol output noise", () => {
     const result = runCli("--help");
 
