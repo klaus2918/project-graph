@@ -414,9 +414,51 @@ export class HistoryManager extends HistoryManagerAbs {
   }
 
   /**
+   * 历史批量作用域嵌套深度。
+   * 大于 0 时 `recordStep()` 只做标记，退出最外层作用域时最多记录一条历史。
+   */
+  private batchDepth = 0;
+  /** 批量作用域内是否发生过 recordStep */
+  private batchHasPendingStep = false;
+
+  /**
+   * 批量作用域：把一次用户命令内的多次 `recordStep()` 合并为一条历史。
+   *
+   * 背景：`connectAll` / `connectDown` / `connectRight` 等会循环调用 `connectEntity()`，
+   * 而它每条边都 `recordStep()`（默认 timeEfficient 模式下等于全量序列化整个舞台）。
+   * 全连接 k 个节点就是 k² 次全量序列化，大工程下会卡死。
+   *
+   * 这是修正“一条命令产生上千条撤销步”的非预期行为，
+   * 与 `StageManager.connectMultipleEntities()` 既有的“多重连接，只记录一次历史”意图一致。
+   * 作用域之外的行为完全不变。
+   */
+  runHistoryBatch<T>(operation: () => T): T {
+    if (this.batchDepth > 0) {
+      // 嵌套时由最外层统一提交，保证“一次命令最多一条历史”
+      return operation();
+    }
+    this.batchDepth++;
+    try {
+      return operation();
+    } finally {
+      this.batchDepth--;
+      if (this.batchHasPendingStep) {
+        this.batchHasPendingStep = false;
+        this.currentManager.recordStep();
+        this.project.emit("stage-commit");
+      }
+    }
+  }
+
+  /**
    * 记录一步骤
    */
   public recordStep(): void {
+    if (this.batchDepth > 0) {
+      // 作用域内先挂起，退出时合并为一条历史
+      this.batchHasPendingStep = true;
+      return;
+    }
     this.currentManager.recordStep();
     this.project.emit("stage-commit");
   }

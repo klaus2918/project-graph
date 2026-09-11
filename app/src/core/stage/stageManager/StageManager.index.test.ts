@@ -304,14 +304,62 @@ function fakeEdge(uuid: string, source: FakeNode, target: FakeNode, unknown = fa
   return edge as typeof edge & { sourceReadCount: number; targetReadCount: number };
 }
 
+/**
+ * 历史管理器桩：与真实 HistoryManager 语义一致——
+ * 作用域内 recordStep 只挂起，退出时合并为一条；作用域外立即记录。
+ */
+function createHistoryStub() {
+  let depth = 0;
+  let pending = false;
+  const recordStepCalls: number[] = [];
+  return {
+    recordStep: () => {
+      if (depth > 0) {
+        pending = true;
+        return;
+      }
+      recordStepCalls.push(1);
+    },
+    runHistoryBatch: <T>(operation: () => T): T => {
+      if (depth > 0) return operation();
+      depth++;
+      try {
+        return operation();
+      } finally {
+        depth--;
+        if (pending) {
+          pending = false;
+          recordStepCalls.push(1);
+        }
+      }
+    },
+    get recordStepCount() {
+      return recordStepCalls.length;
+    },
+  };
+}
+
 function createManager() {
-  const project = { stage: [] as unknown[], stageManager: undefined } as {
-    stage: unknown[];
-    stageManager: unknown;
+  const historyBatchCalls: number[] = [];
+  const recordStepCalls: number[] = [];
+  const historyStub = createHistoryStub();
+  const project = {
+    stage: [] as unknown[],
+    stageManager: undefined as unknown,
+    historyManager: {
+      recordStep: () => {
+        recordStepCalls.push(1);
+        historyStub.recordStep();
+      },
+      runHistoryBatch: <T>(operation: () => T): T => {
+        historyBatchCalls.push(1);
+        return historyStub.runHistoryBatch(operation);
+      },
+    },
   };
   const manager = new StageManager(project as never);
   project.stageManager = manager;
-  return { manager, project };
+  return { manager, project, historyBatchCalls, recordStepCalls };
 }
 
 describe("StageObjectIndex", () => {
@@ -382,7 +430,7 @@ describe("GraphImporter 批量导入（端到端）", () => {
     const { manager, project } = createManager();
     const mutable = project as unknown as Record<string, unknown>;
     mutable.nodeConnector = new NodeConnector(mutable as never);
-    mutable.historyManager = { recordStep: vi.fn() };
+    mutable.historyManager = createHistoryStub();
 
     const spy = vi.spyOn(manager, "updateReferences");
     new GraphImporter(mutable as never).import(["A --> B", "B -标签-> C", "D"].join("\n"));
@@ -397,7 +445,7 @@ describe("GraphImporter 批量导入（端到端）", () => {
     const { manager, project } = createManager();
     const mutable = project as unknown as Record<string, unknown>;
     mutable.nodeConnector = new NodeConnector(mutable as never);
-    mutable.historyManager = { recordStep: vi.fn() };
+    mutable.historyManager = createHistoryStub();
 
     const importer = new GraphImporter(mutable as never);
     expect(() => importer.import(["A --> B", "A --> B --> C"].join("\n"))).toThrow("应该只有两个名称");
@@ -416,7 +464,7 @@ describe("MarkdownImporter 批量导入（端到端）", () => {
     mutable.autoAlign = {
       autoLayoutSelectedFastTreeMode: (root: unknown) => layoutCalls.push(root),
     };
-    mutable.historyManager = { recordStep: vi.fn() };
+    mutable.historyManager = createHistoryStub();
 
     const spy = vi.spyOn(manager, "updateReferences");
     new MarkdownImporter(mutable as never).import(["# 一级", "## 二级", "### 三级"].join("\n"));
@@ -435,7 +483,7 @@ describe("MermaidImporter 批量导入（端到端）", () => {
     const { manager, project } = createManager();
     const mutable = project as unknown as Record<string, unknown>;
     mutable.nodeConnector = new NodeConnector(mutable as never);
-    mutable.historyManager = { recordStep: vi.fn() };
+    mutable.historyManager = createHistoryStub();
     mutable.sectionInOutManager = {
       attachEntityToSection: (child: FakeNode, section: FakeNode & { children: unknown[] }) => {
         if (!section.children.includes(child)) {
@@ -571,7 +619,7 @@ describe("StageManager 索引与引用刷新", () => {
   });
 
   it("runBatch 在作用域内只刷新一次，嵌套时由最外层统一刷新", () => {
-    const { manager } = createManager();
+    const { manager, historyBatchCalls } = createManager();
     const spy = vi.spyOn(manager, "updateReferences");
 
     manager.runBatch(() => {
@@ -588,6 +636,17 @@ describe("StageManager 索引与引用刷新", () => {
     expect(manager.getEntities().length).toBe(4);
     // 作用域退出后引用已是最新
     expect(manager.get("d")).toBeDefined();
+    // 同时把"合并历史"的职责委托给 HistoryManager（真实合并逻辑由其自身单测覆盖）
+    expect(historyBatchCalls.length).toBe(1);
+  });
+
+  it("逐条 add（不在作用域内）不会触发历史合并", () => {
+    const { manager, historyBatchCalls, recordStepCalls } = createManager();
+    manager.add(fakeNode("a") as never);
+    manager.updateReferences();
+
+    expect(historyBatchCalls.length).toBe(0);
+    expect(recordStepCalls.length).toBe(0);
   });
 
   it("runBatch 遇到异常时仍会刷新，且把异常继续抛出", () => {
@@ -741,7 +800,7 @@ describe("ConnectNodeSmartTools 批量连线（端到端）", () => {
       manager.add(node as never, true);
     }
     const mutable = project as unknown as Record<string, unknown>;
-    mutable.historyManager = { recordStep: vi.fn() };
+    mutable.historyManager = createHistoryStub();
     mutable.graphMethods = { isConnected: () => true };
     mutable.nodeConnector = {
       connectConnectableEntity: (from: FakeNode, to: FakeNode) => {
@@ -758,6 +817,39 @@ describe("ConnectNodeSmartTools 批量连线（端到端）", () => {
     expect(manager.getLineEdges().length).toBe(K * (K - 1));
     // 旧实现会做 K×(K-1) 次全量刷新（k=40、1500 节点场景实测 5.2s），现在只刷新 1 次
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("全连接只产生一条历史（真实连线器每条边都会记历史）", () => {
+    const { manager, project } = createManager();
+    const K = 12;
+    const nodes = Array.from({ length: K }, (_, i) => fakeNode(`n${i}`));
+    for (const node of nodes) {
+      manager.add(node as never, true);
+    }
+    const historyStub = createHistoryStub();
+    const mutable = project as unknown as Record<string, unknown>;
+    mutable.historyManager = historyStub;
+    mutable.graphMethods = { isConnected: () => true };
+    // 模拟真实 NodeConnector.connectConnectableEntity：加边 + 记历史（与 StageManager.connectEntity 一致）
+    mutable.nodeConnector = {
+      connectConnectableEntity: (from: FakeNode, to: FakeNode) => {
+        manager.add(fakeEdge(`h-${from.uuid}-${to.uuid}`, from, to) as never);
+        (
+          mutable.historyManager as {
+            recordStep: () => void;
+          }
+        ).recordStep();
+      },
+    };
+    for (const node of nodes) {
+      node.isSelected = true;
+    }
+
+    ConnectNodeSmartTools.connectAll(mutable as never);
+
+    expect(manager.getLineEdges().length).toBe(K * (K - 1));
+    // 关键：132 次 recordStep 被合并成 1 条历史（这曾导致大工程下卡死十几秒）
+    expect(historyStub.recordStepCount).toBe(1);
   });
 });
 

@@ -211,22 +211,29 @@ export class StageManager {
   /**
    * 批量操作作用域。
    *
-   * 一次用户操作（例如"按分隔符拆分文本节点"）可能创建 k 个节点和 m×k 条连线，
-   * 若每次都触发 `updateReferences()`（O(N) 且常数不小），整批就是 O(k·N)。
-   * 放进本作用域后，中间过程的插入不再刷新，退出时只刷新一次。
+   * 一次用户操作（例如"按分隔符拆分文本节点"或"全连接"）可能创建 k 个节点和 m×k 条连线，
+   * 若每次都触发 `updateReferences()`（O(N) 且常数不小），整批就是 O(k·N)；
+   * 若每次都 `historyManager.recordStep()`（默认模式=全量序列化整个舞台），整批就是 k·(全量序列化)。
+   * 两者叠加正是大工程下"点一下卡死十几秒"的成因。
    *
-   * 注意：作用域内部**不能**依赖 `updateReferences()` 维护的派生数据
-   * （`parentSection` / `topLevelEntities` / `rootSections` / 分组树）；
-   * 如果确实需要，请在作用域结束后再读。
+   * 放进本作用域后：中间过程的插入既不刷新引用也不记历史，
+   * 退出时统一刷新一次引用、并最多记录一条历史。
+   *
+   * 注意：
+   * 1) 作用域内部**不能**依赖 `updateReferences()` 维护的派生数据
+   *    （`parentSection` / `topLevelEntities` / `rootSections` / 分组树）；
+   *    如果确实需要，请在作用域结束后再读。
+   * 2) 历史快照不含派生数据（那几个字段没有 `@serializable`），
+   *    因此"先刷新引用还是先记历史"对快照内容没有影响。
    */
   runBatch<T>(operation: () => T): T {
     if (this.batchDepth > 0) {
-      // 嵌套时由最外层统一刷新，保证"一次刷新"而不是每层各刷一次
+      // 嵌套时由最外层统一刷新，保证"一次刷新、一条历史"
       return operation();
     }
     this.batchDepth++;
     try {
-      return operation();
+      return this.project.historyManager.runHistoryBatch(operation);
     } finally {
       this.batchDepth--;
       this.updateReferences();
