@@ -90,6 +90,23 @@ export class StageManager {
     return this.stageObjectIndex;
   }
 
+  /** `updateReferences()` 的调用次数（单调递增），与索引重建次数共同构成舞台版本号 */
+  private referenceRefreshCount = 0;
+
+  /**
+   * 舞台变更版本号（单调递增，读取 O(1)）。
+   *
+   * 组成：`updateReferences()` 调用次数 + 索引重建次数。读取时先经索引的廉价指纹确认新鲜度
+   * （必要时顺带重建），因此即使有人绕过本类直接改 `project.stage`，版本号也会变化。
+   * 用途是替代「每次都比较全量序列化哈希」的变更检测（例如大纲窗口的轮询），
+   * 避免为了判重而反复序列化整个舞台。
+   *
+   * 已知边界：只改对象内部字段（例如文本内容）且既不刷新引用也不改数组时，版本号不变。
+   */
+  get stageRevision(): number {
+    return this.referenceRefreshCount + this.index.revision;
+  }
+
   public getRootSections(): Section[] {
     return [...this.rootSections];
   }
@@ -255,6 +272,7 @@ export class StageManager {
    * 包含了对Edge几何组偏移索引的更新（多重边/双向边自动散开）
    */
   updateReferences() {
+    this.referenceRefreshCount++;
     // 建立 uuid → 实体 映射，把原先“实体 × 关系”的二重循环降为一次线性遍历。
     // 重复 uuid 时保留先出现的那个，与原实现（外层按 stage 顺序取第一个匹配实体）语义一致。
     const entityByUuid = new Map<string, Entity>();

@@ -105,20 +105,34 @@ export class Controller {
   readonly edgeHoverTolerance = 10;
 
   /**
+   * 已绑定的事件处理器。注册与解绑必须使用同一引用：原先 dispose 中重新 `bind` 会生成新函数，
+   * 导致 canvas 元素上的监听器全部解绑失败，关闭后的工程被元素长期引用而无法回收。
+   */
+  private readonly boundKeydown = this.keydown.bind(this);
+  private readonly boundKeyup = this.keyup.bind(this);
+  private readonly boundMousedown = this.mousedown.bind(this);
+  private readonly boundMouseup = this.mouseup.bind(this);
+  private readonly boundTouchstart = this.touchstart.bind(this);
+  private readonly boundTouchmove = this.touchmove.bind(this);
+  private readonly boundTouchend = this.touchend.bind(this);
+  private readonly boundMousewheel = this.mousewheel.bind(this);
+  private readonly boundPointerleave = this.pointerleave.bind(this);
+
+  /**
    * 初始化函数在页面挂在的时候调用，将事件绑定到Canvas上
    * @param this.project.canvas.element
    */
   constructor(private readonly project: Project) {
     // 绑定事件
-    this.project.canvas.element.addEventListener("keydown", this.keydown.bind(this));
-    this.project.canvas.element.addEventListener("keyup", this.keyup.bind(this));
-    this.project.canvas.element.addEventListener("pointerdown", this.mousedown.bind(this));
-    this.project.canvas.element.addEventListener("pointerup", this.mouseup.bind(this));
-    this.project.canvas.element.addEventListener("touchstart", this.touchstart.bind(this), false);
-    this.project.canvas.element.addEventListener("touchmove", this.touchmove.bind(this), false);
-    this.project.canvas.element.addEventListener("touchend", this.touchend.bind(this), false);
-    this.project.canvas.element.addEventListener("wheel", this.mousewheel.bind(this), false);
-    this.project.canvas.element.addEventListener("pointerleave", this.pointerleave.bind(this));
+    this.project.canvas.element.addEventListener("keydown", this.boundKeydown);
+    this.project.canvas.element.addEventListener("keyup", this.boundKeyup);
+    this.project.canvas.element.addEventListener("pointerdown", this.boundMousedown);
+    this.project.canvas.element.addEventListener("pointerup", this.boundMouseup);
+    this.project.canvas.element.addEventListener("touchstart", this.boundTouchstart, false);
+    this.project.canvas.element.addEventListener("touchmove", this.boundTouchmove, false);
+    this.project.canvas.element.addEventListener("touchend", this.boundTouchend, false);
+    this.project.canvas.element.addEventListener("wheel", this.boundMousewheel, false);
+    this.project.canvas.element.addEventListener("pointerleave", this.boundPointerleave);
     // 所有的具体的功能逻辑封装成控制器对象
     // 当有新功能时新建控制器对象，并在这里初始化
     Object.values(import.meta.glob("./concrete/*.tsx", { eager: true }))
@@ -137,15 +151,15 @@ export class Controller {
         v.dispose();
       }
     });
-    this.project.canvas.element.removeEventListener("keydown", this.keydown.bind(this));
-    this.project.canvas.element.removeEventListener("keyup", this.keyup.bind(this));
-    this.project.canvas.element.removeEventListener("pointerdown", this.mousedown.bind(this));
-    this.project.canvas.element.removeEventListener("pointerup", this.mouseup.bind(this));
-    this.project.canvas.element.removeEventListener("touchstart", this.touchstart.bind(this), false);
-    this.project.canvas.element.removeEventListener("touchmove", this.touchmove.bind(this), false);
-    this.project.canvas.element.removeEventListener("touchend", this.touchend.bind(this), false);
-    this.project.canvas.element.removeEventListener("wheel", this.mousewheel.bind(this), false);
-    this.project.canvas.element.removeEventListener("pointerleave", this.pointerleave.bind(this));
+    this.project.canvas.element.removeEventListener("keydown", this.boundKeydown);
+    this.project.canvas.element.removeEventListener("keyup", this.boundKeyup);
+    this.project.canvas.element.removeEventListener("pointerdown", this.boundMousedown);
+    this.project.canvas.element.removeEventListener("pointerup", this.boundMouseup);
+    this.project.canvas.element.removeEventListener("touchstart", this.boundTouchstart, false);
+    this.project.canvas.element.removeEventListener("touchmove", this.boundTouchmove, false);
+    this.project.canvas.element.removeEventListener("touchend", this.boundTouchend, false);
+    this.project.canvas.element.removeEventListener("wheel", this.boundMousewheel, false);
+    this.project.canvas.element.removeEventListener("pointerleave", this.boundPointerleave);
   }
 
   // 以下事件处理函数仅为Controller总控制器修改重要属性使用。不涉及具体的功能逻辑。

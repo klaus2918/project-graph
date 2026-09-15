@@ -47,6 +47,17 @@ export class StageObjectIndex {
   private sourceMiddle: StageObject | null = null;
   private sourceLast: StageObject | null = null;
 
+  /**
+   * 索引重建次数（单调递增）。
+   * 对外作为 O(1) 的「舞台结构是否变化」信号使用：
+   * 一旦有人绕过 StageManager 直接改数组，指纹会触发重建，计数随之增加。
+   */
+  private rebuildCount = 0;
+
+  get revision(): number {
+    return this.rebuildCount;
+  }
+
   /** uuid → 舞台对象，重复 uuid 时保留先出现的那个（与原 `stage.find` 语义一致） */
   readonly byUuid = new Map<string, StageObject>();
   private readonly entityByUuid = new Map<string, Entity>();
@@ -95,6 +106,7 @@ export class StageObjectIndex {
   }
 
   private rebuild(stage: StageObject[]): void {
+    this.rebuildCount++;
     this.source = stage;
     this.sourceLength = stage.length;
     this.sourceFirst = stage.length > 0 ? stage[0] : null;

@@ -875,3 +875,56 @@ describe("TreeImporter 批量导入（端到端）", () => {
     expect(layoutCalls.length).toBe(1);
   });
 });
+
+describe("StageManager 舞台版本号（替代全量哈希轮询的变更检测）", () => {
+  it("无变更时版本号稳定（读取为廉价操作，不产生抖动）", () => {
+    const { manager } = createManager();
+    manager.add(fakeNode("a") as never, true);
+
+    const first = manager.stageRevision;
+    expect(manager.stageRevision).toBe(first);
+    expect(manager.stageRevision).toBe(first);
+  });
+
+  it("通过 add（触发引用刷新）后版本号递增", () => {
+    const { manager } = createManager();
+    const before = manager.stageRevision;
+
+    manager.add(fakeNode("a") as never);
+
+    expect(manager.stageRevision).toBeGreaterThan(before);
+  });
+
+  it("绕过 StageManager 直接改舞台数组时，版本号因索引重建同样递增", () => {
+    const { manager, project } = createManager();
+    const before = manager.stageRevision;
+
+    (project as unknown as { stage: unknown[] }).stage.push(fakeNode("direct") as never);
+
+    expect(manager.stageRevision).toBeGreaterThan(before);
+  });
+
+  it("批量作用域内的结构变化在退出后即可被版本号感知", () => {
+    const { manager } = createManager();
+    const before = manager.stageRevision;
+
+    manager.runBatch(() => {
+      manager.add(fakeNode("a") as never);
+      manager.add(fakeNode("b") as never);
+    });
+
+    expect(manager.stageRevision).toBeGreaterThan(before);
+  });
+
+  it("删除对象后版本号递增", () => {
+    const { manager } = createManager();
+    const node = fakeNode("a");
+    manager.add(node as never, true);
+    const before = manager.stageRevision;
+
+    manager.delete(node as never);
+    manager.updateReferences();
+
+    expect(manager.stageRevision).toBeGreaterThan(before);
+  });
+});

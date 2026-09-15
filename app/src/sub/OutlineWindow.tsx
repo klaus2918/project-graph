@@ -53,11 +53,13 @@ export default function OutlineWindow() {
 
   useEffect(() => {
     if (!project) return;
-    let lastHash = project.stageHash;
+    // 这里只比较 O(1) 的舞台版本号：原实现每 300ms 调用 project.stageHash（整表序列化 + 编码 + md5），
+    // 大纲窗口长期开着时会持续占用主线程，大工程下会让应用整体变卡。
+    let lastRevision = project.stageManager.stageRevision;
     const timer = window.setInterval(() => {
-      const currentHash = project.stageHash;
-      if (currentHash !== lastHash) {
-        lastHash = currentHash;
+      const currentRevision = project.stageManager.stageRevision;
+      if (currentRevision !== lastRevision) {
+        lastRevision = currentRevision;
         refresh();
       }
     }, 300);
