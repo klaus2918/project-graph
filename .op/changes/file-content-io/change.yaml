@@ -1,0 +1,53 @@
+name: file-content-io
+title: 用 agent 工具直接读写/调整 .prg 工程文件内容（学习并固化 29 个图操作工具）
+type: feature
+phase: plan
+active: true
+paused: false
+created_at: "2026-09-15"
+execution_mode: constrained
+description: >-
+  目标（用户澄清）：对 .prg 这种工程文件，用 agent 工具直接读取内容、直接调整内容（例如
+  D:\Note\project-graph\【尚硅谷】spring-boot注解开发-2026年4月8日.prg）；重点是把「29 个图操作工具」学会并能实际使用。
+  已实测跑通：CLI 工具集（pnpm cli -- tool invoke …）在设置
+  PROJECT_GRAPH_OWNERSHIP_HELPER_PATH=app/src-tauri/target/release/project-graph-ownership-helper.exe、
+  旧工程加 --allow-upgrade、且先跑一次分配引用的工具（get_all_nodes）之后，可读可写；
+  实测链式调用：get_all_nodes → breadth_expand_node（一次建 3 节点 + 3 连线）→ get_all_nodes 复核通过；
+  写操作为 Closed 项目原子写，按当前 schema 重写整个 ZIP+msgpack 容器；实测均在系统临时目录副本上进行，用户原文件未变。
+  已产出：analysis.md（v2 实测报告）、tools-playbook.md（29 工具操作手册）、
+  仓库技能 .agents/skills/operate-prg-project/SKILL.md（已在 AGENTS.md 技能清单登记）。
+  缺口：无通用文本文件读写工具、无「新建 .prg」工具、Open 项目改动不落盘、无按文本批量替换节点的工具。
+  v1 曾误判方向为「应用自身/应用内 AI 如何读写文件」，v2 起已重写。
+keywords:
+  [
+    agent工具,
+    .prg,
+    文件内容修改,
+    cli,
+    BuiltInToolRegistry,
+    operate-prg-project,
+    tools-playbook,
+    ownership-helper,
+    allow-upgrade,
+    29个工具,
+    工程文件,
+    project-graph,
+  ]
+collected: false
+collected_from: null
+collected_at: null
+parent: null
+has_ui: false
+has_db: false
+has_arch: false
+design_extracted: false
+design_tags: []
+plan:
+  total_count: 20
+  done_count: 18
+  confirmed: false
+  confirmed_at: null
+build:
+  total_count: 0
+  done_count: 0
+  started_at: null
