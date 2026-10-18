@@ -1,0 +1,77 @@
+{
+  "name": "env-hang",
+  "title": "当前环境卡死问题处理",
+  "type": "feature",
+  "execution_mode": "constrained",
+  "phase": "archive",
+  "created_at": "2026-09-15",
+  "archived_at": "2026-09-15T15:27:42+08:00",
+  "branch": "master",
+  "commits": [
+    {
+      "repo": "D:/githup-workspace/project-graph",
+      "hash": "0d2df077",
+      "message": "fix(stage): 【修复】事件监听器生命周期泄漏与大纲窗口常驻全量哈希 @AI G"
+    },
+    {
+      "repo": "D:/Note/ThinkSource",
+      "hash": "55f6f74",
+      "message": "docs(实践总结): 【新增】Project Graph 长会话假死修复：监听器生命周期泄漏与常驻全量哈希 @AI G"
+    }
+  ],
+  "push": {
+    "status": "blocked",
+    "attempted_at": "2026-09-15T15:40+08:00",
+    "project_graph": "https://github.com/klaus2918/project-graph.git → FATAL: Failed to connect to github.com port 443 after 21112 ms（另有 Recv failure: Connection was reset）；SSH 22 可达但 Permission denied (publickey)；无 http(s).proxy 配置",
+    "knowledge_base": "D:/Note/ThinkSource 未配置任何 remote（git remote -v 为空），无推送目标",
+    "pending_commits_ahead": 8,
+    "next_step": "用户开启 GitHub 加速（WattToolkit 等）或代理后执行 git -C D:\\\\githup-workspace\\\\project-graph push origin master；随后在 Actions → Release → Run workflow 输入版本号 x.y.z"
+  },
+  "files": {
+    "added": ["app/src/core/stage/Canvas.test.ts"],
+    "modified": [
+      "app/src/core/stage/Canvas.tsx",
+      "app/src/core/service/controlService/controller/Controller.tsx",
+      "app/src/core/stage/stageManager/StageManager.tsx",
+      "app/src/core/stage/stageManager/StageObjectIndex.ts",
+      "app/src/sub/OutlineWindow.tsx",
+      "app/src/core/stage/stageManager/StageManager.index.test.ts"
+    ],
+    "deleted": []
+  },
+  "diffstat": { "insertions": 206, "deletions": 82 },
+  "validation": {
+    "type_check": "exit 0（两轮）",
+    "unit_tests": "6 个相关文件 59 passed / 1 skipped（含新增 7 用例）",
+    "local_package": "BUILD EXIT 0 @2026-09-15T12:15:37；NSIS 9,997,252 B @12:15:34",
+    "local_install": "INSTALLER_EXIT 0 @12:16:17；注册表 DisplayVersion=0.0.0-dev；安装目录 D:\\mysoft\\Project Graph",
+    "human_acceptance": "用户 2026-09-15 验收通过（查看方式：对话摘要）"
+  },
+  "artifacts": [
+    "change.yaml",
+    "plan.md",
+    "tasks.md",
+    "expert-review.md",
+    "build-notes.md",
+    "why-scheduled.md",
+    "打包安装任务单.md",
+    "build-local.ps1",
+    "install-local.ps1",
+    "tauri-build-local.json",
+    "archive-summary.md",
+    "cleanup-report.md"
+  ],
+  "knowledge": {
+    "base": "primary",
+    "path": "D:/Note/ThinkSource",
+    "doc": "02-分类/024-实践总结/2026-09-15-project-graph-长会话假死修复.md",
+    "timeline": "时间线.md"
+  },
+  "not_done": [
+    "历史快照按字节裁剪（StageHistoryManager / historySize 默认 150）",
+    "AIWindow 每 300ms getSelectedEntities() 轮询",
+    "Tauri listen/unlisten 配对核查、WebView2 自身内存行为",
+    "首版方案的 F1/F2/F3 微优化（逐帧整表拷贝、getConnectableEntity 双份全量扫描、自动计算写入批量化）"
+  ],
+  "notes": "现象口径由用户修正为「长会话累积型退化 + 空闲后假死」，据此将方案从「单次操作复杂度」重定向为「资源不释放 + 常驻开销」。本地打包/安装链路产物随归档保留。"
+}

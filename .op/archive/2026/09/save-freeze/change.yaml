@@ -1,0 +1,14 @@
+name: "save-freeze"
+title: "Ctrl+S 保存大工程导致主线程长时间阻塞（卡死）"
+type: feature
+phase: build
+active: true
+paused: false
+created: "2026-09-15"
+summary: "大文件按 Ctrl+S 后界面数秒到数十秒无响应、无法切换与操作；第一轮（去重复序列化 + 缩略图降级 + 保存中反馈）已被用户实测否定（仍卡死、无明显改善），第二轮改为先量化各段耗时（serialize/编码/zip/附件/落盘）再定点削减，D1 不引入 Worker 的决策作废"
+keywords: [卡死, 保存, Ctrl+S, serialize, 缩略图, 主线程阻塞, historyManager, 大工程]
+collected: false
+collected_from: null
+collected_at: null
+parent: null
+execution_mode: constrained

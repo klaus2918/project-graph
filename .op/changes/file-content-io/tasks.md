@@ -161,7 +161,7 @@ tasks:
     usage_step: []
 
   - id: 17
-    title: "待用户定：① cc-switch 9 条悬空行是否清理 ② op-design-extract 2 条正文规范问题 ③ 真实 .prg 写入授权 ④ G1 五问"
+    title: "待用户定：① cc-switch 9 条表行的删法（无对应技能，op-skills 无反注册脚本）② 真实 .prg 写入授权 ③ G1 五问"
     status: pending
     priority: high
     type: decision
@@ -198,5 +198,35 @@ tasks:
     verify: manual
     end: ["pc"]
     depends: [19]
+    usage_step: []
+
+  - id: 21
+    title: "清理各端悬空 Junction：6 端共 40 个指向已吸收旧技能（docx / skill-creator / writing-skills 等）的失效链接；复查剩余 0"
+    status: done
+    priority: medium
+    type: ops
+    verify: auto
+    end: ["pc"]
+    depends: [16]
+    usage_step: []
+
+  - id: 22
+    title: "op-design-extract 正文修复：补项目级沉淀路径与 <project-slug> 占位说明；op-000-validate --full 两条错误清零并全量通过"
+    status: done
+    priority: medium
+    type: fix
+    verify: auto
+    end: ["pc"]
+    depends: [16]
+    usage_step: []
+
+  - id: 23
+    title: "主仓库提交（safe-git-write 全流程）：op-skills 2f0cea8（8 文件）、project-graph 1e0bd948（6 文件）；均未 push"
+    status: done
+    priority: high
+    type: ops
+    verify: auto
+    end: ["pc"]
+    depends: [22]
     usage_step: []
 ---

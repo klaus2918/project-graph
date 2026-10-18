@@ -1,0 +1,40 @@
+name: env-hang
+title: 当前环境卡死问题处理
+type: feature
+phase: archive
+active: true
+paused: false
+created_at: "2026-09-15"
+execution_mode: constrained
+description: >-
+  现象（用户已确认）：长时间使用后出现假死，操作一段时间后放置不操作、过段时间再操作时整个应用无响应，
+  必须关闭重开——属累积型退化 + 空闲后暴露，而非单次操作即刻卡死。
+  排查已定位三类候选根因：D1 Canvas 的 window keydown/keyup/blur 匿名闭包从不解除（旧 Project 无法 GC，
+  连带舞台对象与最多 150 份全量历史快照常驻）；D2 Controller.dispose() 用新 bind 引用解绑导致 9 个
+  canvas 监听器全部解绑失败；D3 OutlineWindow 每 300ms 调 project.stageHash（整表 serialize + encode + md5）。
+  与既有产出不同源：仓库 000-task/18-卡死问题分析与优化迭代.md 与知识库《Project Graph 性能卡死问题与优化手册》
+  解决的是应用层 O(N³) 引用刷新/全连接卡死（已完成），本变更针对生命周期泄漏与常驻开销。
+keywords: [卡死, 假死, hang, freeze, memory-leak, event-listener, lifecycle, stage-hash, project-graph]
+collected: false
+collected_from: null
+collected_at: null
+parent: null
+has_ui: false
+has_db: false
+has_arch: false
+design_extracted: false
+design_tags: []
+plan:
+  total_count: 7
+  done_count: 7
+  confirmed: true
+  confirmed_at: "2026-09-15"
+build:
+  total_count: 7
+  done_count: 7
+  started_at: "2026-09-15"
+  note: >-
+    任务 1-7 全部完成：Canvas / Controller 监听器生命周期修复（旧工程可被回收）、
+    StageManager 新增 O(1) 舞台版本号、OutlineWindow 去掉 300ms 全量 stageHash 轮询、
+    新增 Canvas 监听器回归用例与版本号用例；type-check 通过、相关单测 59 passed。
+    未做任何 git 写操作（allow_commit=false）。

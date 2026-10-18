@@ -1,0 +1,70 @@
+{
+  "name": "save-freeze",
+  "title": "Ctrl+S 保存大工程导致主线程长时间阻塞（卡死）",
+  "type": "feature",
+  "execution_mode": "constrained",
+  "phase": "archive",
+  "created_at": "2026-09-15",
+  "archived_at": "2026-10-18T12:41:45+08:00",
+  "branch": "master",
+  "commits": [
+    {
+      "repo": "D:/githup-workspace/project-graph",
+      "hash": "d7bb80ea",
+      "message": "fix(core): 【优化】Ctrl+S 保存大工程主线程阻塞：复用舞台快照 + 缩略图规模降级 + 保存中反馈 + 保存耗时诊断 @AI G"
+    }
+  ],
+  "files": {
+    "added": [
+      "app/src/core/service/dataFileService/saveTimingDiagnostics.tsx",
+      "app/src/core/service/dataFileService/saveTimingDiagnosticsFormat.tsx",
+      "app/src/core/service/dataFileService/saveTimingDiagnostics.test.ts",
+      "app/src/core/service/dataFileService/savePipeline.bench.test.ts",
+      "app/src/core/service/dataGenerateService/generateThumbnail.test.ts"
+    ],
+    "modified": [
+      "app/src/core/Project.tsx",
+      "app/src/core/stage/stageManager/StageHistoryManager.tsx",
+      "app/src/core/service/controlService/shortcutKeysEngine/shortcutKeysRegister.tsx",
+      "app/src/core/service/dataFileService/AutoSaveBackupService.tsx",
+      "app/src/core/service/dataGenerateService/generateThumbnail.tsx"
+    ],
+    "deleted": []
+  },
+  "diffstat": { "insertions": 507, "deletions": 13 },
+  "validation": {
+    "type_check": "exit 0（2026-09-15 两轮：第一轮改动后、第二轮埋点后各一次）",
+    "unit_tests": "generateThumbnail 2 passed；saveTimingDiagnostics 1 passed",
+    "benchmark": "离线基准（1,500 / 7,500 / 30,000 对象）：CPU 管线 serialize+encode+zip+getData ≈ 18 / 45 / 152 ms；单实体序列化 1.8–1.9 µs（线性）；附件 ≈8.7 ms/MB",
+    "local_package": "BUILD EXIT 0 @2026-09-15T19:28:58；NSIS 9,995,890 B @19:28:55",
+    "local_install": "INSTALLER_EXIT 0 @2026-09-15T19:29:11；DisplayVersion=0.0.0-dev；安装目录 D:\\mysoft\\Project Graph",
+    "human_acceptance": "用户 2026-10-18 验收通过（原话：「这个版本可以」）"
+  },
+  "release": {
+    "repo": "https://github.com/klaus2918/project-graph.git",
+    "tag": "v0.0.0-dev",
+    "asset": "Project Graph_0.0.0-dev_x64-setup.exe",
+    "built_at": "2026-09-15T19:28:55",
+    "note": "发布使用用户验收的本地构建包；提交中包含的第二轮诊断埋点不进入该包"
+  },
+  "artifacts": [
+    "change.yaml",
+    "plan.md",
+    "tasks.md",
+    "build-notes.md",
+    "build-local.ps1",
+    "dev-local.ps1",
+    "install-local.ps1",
+    "tauri-build-local.json",
+    "archive-summary.md",
+    "cleanup-report.md"
+  ],
+  "not_done": [
+    "任务 3：用户在大工程复现 Ctrl+S 并取 save-timing.log 判定主导段（未执行，用户直接以 19:28 构建验收）",
+    "任务 4：按数据定点削减（Worker 化 encode+zip、serialize 分片、附件增量、落盘分块等）",
+    "任务 5：复测对比（改动前后数字对照）",
+    "任务 6：埋点收敛（saveTimingDiagnostics 仍随手动保存弹诊断对话框；后续若从 master 构建发布版，需先收敛或默认关闭）",
+    "任务 7：最终验收（由用户对 19:28 构建包的直接验收替代）"
+  ],
+  "notes": "第一轮修复被用户实测否定后，第二轮改为「先量化再定点削减」；离线基准否定了 CPU 管线为主导成本的假设，应用内埋点已就位但未取数。用户 2026-10-18 以 19:28 构建包验收通过并要求收工发布。"
+}

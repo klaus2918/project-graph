@@ -1,0 +1,12 @@
+{
+  "active_changes": [
+    {
+      "name": "file-content-io",
+      "title": "用 agent 工具直接读写/调整 .prg 工程文件内容（学习并固化 29 个图操作工具）",
+      "type": "feature",
+      "phase": "plan",
+      "created_at": "2026-09-15"
+    }
+  ],
+  "archived_changes": []
+}
