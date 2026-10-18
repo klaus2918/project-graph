@@ -11,7 +11,7 @@ abstract class HistoryManagerAbs {
   public abstract undo(): void;
   public abstract redo(): void;
   public abstract get(index: number): Record<string, any>[];
-  public abstract clearHistory(): void;
+  public abstract clearHistory(snapshot?: Record<string, any>[]): void;
 }
 
 class HistoryManagerTimeEfficient extends HistoryManagerAbs {
@@ -179,10 +179,11 @@ class HistoryManagerTimeEfficient extends HistoryManagerAbs {
    * 清空历史记录
    * 保存文件时调用，将当前状态设为新的初始状态
    */
-  clearHistory() {
+  clearHistory(snapshot?: Record<string, any>[]) {
     this.history = [];
     this.currentIndex = -1;
-    this.initialStage = serialize(this.project.stage);
+    // 保存链路已经算过一次全量快照，直接复用；否则大工程按一次 Ctrl+S 会因为这次重复序列化而卡住
+    this.initialStage = snapshot ?? serialize(this.project.stage);
     this.project.projectState = ProjectState.Saved;
     if (Settings.showDebug) {
       toast("历史记录已清空");
@@ -369,10 +370,11 @@ class HistorymanagerMemoryEfficient extends HistoryManagerAbs {
    * 清空历史记录
    * 保存文件时调用，将当前状态设为新的初始状态
    */
-  clearHistory() {
+  clearHistory(snapshot?: Record<string, any>[]) {
     this.deltas = [];
     this.currentIndex = -1;
-    this.initialStage = serialize(this.project.stage);
+    // 同时间高效模式：优先复用调用方（保存链路）已算出的快照
+    this.initialStage = snapshot ?? serialize(this.project.stage);
     this.project.projectState = ProjectState.Saved;
     if (Settings.showDebug) {
       toast("历史记录已清空");
@@ -489,8 +491,8 @@ export class HistoryManager extends HistoryManagerAbs {
   /**
    * 清空历史记录
    */
-  public clearHistory(): void {
-    this.currentManager.clearHistory();
+  public clearHistory(snapshot?: Record<string, any>[]): void {
+    this.currentManager.clearHistory(snapshot);
   }
 
   /**

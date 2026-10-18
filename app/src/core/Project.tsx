@@ -88,6 +88,7 @@ import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { URI } from "vscode-uri";
 import { CollaborationService } from "./service/collaboration/CollaborationService";
 import { AutoSaveBackupService } from "./service/dataFileService/AutoSaveBackupService";
+import { markSaveSegment, setSaveScale } from "./service/dataFileService/saveTimingDiagnostics";
 import { generateThumbnail } from "./service/dataGenerateService/generateThumbnail";
 import { ProjectOwnershipLifecycle, ProjectOwnershipLease } from "./ProjectOwnership";
 import { compareProjectVersions, parseProjectFile } from "./ProjectFile";
@@ -344,6 +345,7 @@ export class Project extends Tab {
     try {
       this.isSaving = true;
       await this.fs.write(this.uri, await this.getFileContent(options));
+      markSaveSegment("fs.write");
       this.projectState = ProjectState.Saved;
     } finally {
       this.isSaving = false;
@@ -371,21 +373,46 @@ export class Project extends Tab {
   public readme?: string;
   public wasUpgraded = false;
 
+  /**
+   * 最近一次保存/备份链路算出的舞台快照（纯数据）。
+   * 供同一链路的下游（Ctrl+S 保存后清空历史）复用，避免对同一个舞台重复做全量序列化。
+   * 只读用途，不要在别处修改它。
+   */
+  public lastSavedStageSnapshot: Record<string, any>[] | null = null;
+
   // 备份也要用到这个
   async getFileContent(options: { includeThumbnail?: boolean } = {}) {
     const includeThumbnail = options.includeThumbnail !== false;
+    setSaveScale("entityCount", this.stageManager.getEntities().length);
+    setSaveScale("associationCount", this.stageManager.getAssociations().length);
+    let attachmentBytes = 0;
+    for (const attachment of this.attachments.values()) {
+      attachmentBytes += attachment.size;
+    }
+    setSaveScale("attachmentCount", this.attachments.size);
+    setSaveScale("attachmentBytes", attachmentBytes);
+
     const serializedStage = serialize(this.stage);
+    markSaveSegment("serialize");
+    this.lastSavedStageSnapshot = serializedStage;
     const encodedStage = this.encoder.encode(serializedStage);
+    markSaveSegment("encode:stage");
+    setSaveScale("encodedStageBytes", encodedStage.byteLength);
     const uwriter = new Uint8ArrayWriter();
 
     // @zip.js/zip.js 从 ^2.7.63 升到了 ^2.8.26，需要显示指定 level: 0，防止保存的时候卡顿
     const writer = new ZipWriter(uwriter, { level: 0 });
     await writer.add("stage.msgpack", new Uint8ArrayReader(encodedStage), { level: 0 });
+    markSaveSegment("zip:stage");
     await writer.add("tags.msgpack", new Uint8ArrayReader(this.encoder.encode(this.tags)), { level: 0 });
+    markSaveSegment("zip:tags");
     await writer.add("reference.msgpack", new Uint8ArrayReader(this.encoder.encode(this.references)), { level: 0 });
+    markSaveSegment("zip:reference");
     await writer.add("metadata.msgpack", new Uint8ArrayReader(this.encoder.encode(this.metadata)), { level: 0 });
+    markSaveSegment("zip:metadata");
     if (this.readme) {
       await writer.add("README.md", new Uint8ArrayReader(new TextEncoder().encode(this.readme)), { level: 0 });
+      markSaveSegment("zip:readme");
     }
     // 添加附件
     for (const [uuid, attachment] of this.attachments.entries()) {
@@ -393,10 +420,13 @@ export class Project extends Tab {
         level: 0,
       });
     }
+    markSaveSegment("zip:attachments");
     // 添加缩略图
     if (includeThumbnail) {
       try {
         const thumbnailBlob = await generateThumbnail(this);
+        markSaveSegment("thumbnail");
+        setSaveScale("thumbnailBytes", thumbnailBlob?.size ?? 0);
         if (thumbnailBlob) {
           await writer.add("thumbnail.png", new BlobReader(thumbnailBlob), { level: 0 });
         }
@@ -405,8 +435,11 @@ export class Project extends Tab {
       }
     }
     await writer.close();
+    markSaveSegment("zip:close");
 
     const fileContent = await uwriter.getData();
+    markSaveSegment("zip:getData");
+    setSaveScale("zipBytes", fileContent.byteLength);
     return fileContent;
   }
 

@@ -5,6 +5,11 @@ import { MouseLocation } from "@/core/service/controlService/MouseLocation";
 import { ViewFlashEffect } from "@/core/service/feedbackService/effectEngine/concrete/ViewFlashEffect";
 import { ViewOutlineFlashEffect } from "@/core/service/feedbackService/effectEngine/concrete/ViewOutlineFlashEffect";
 import { Settings } from "@/core/service/Settings";
+import {
+  finishSaveDiagnostics,
+  markSaveSegment,
+  startSaveDiagnostics,
+} from "@/core/service/dataFileService/saveTimingDiagnostics";
 import { Themes } from "@/core/service/Themes";
 import { PenStrokeMethods } from "@/core/stage/stageManager/basicMethods/PenStrokeMethods";
 import { ConnectableEntity } from "@/core/stage/stageObject/abstract/ConnectableEntity";
@@ -1538,13 +1543,28 @@ export const allKeyBinds: KeyBindItem[] = [
     onPress: async () => {
       const tab = store.get(activeTabAtom);
       const activeProject = tab instanceof Project ? tab : undefined;
-      if (activeProject) {
-        activeProject.camera.clearMoveCommander();
+      if (!activeProject) return;
+      if (activeProject.isSaving) {
+        toast.warning("文件正在保存中，请稍候");
+        return;
+      }
+      startSaveDiagnostics();
+      activeProject.camera.clearMoveCommander();
+      const toastId = toast.loading("正在保存文件…");
+      // 保存是主线程上的同步重活，先让出一次事件循环把「保存中」绘制出来，否则提示要等卡完才可见
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      markSaveSegment("事件循环让出");
+      try {
         await activeProject.save();
         if (Settings.clearHistoryWhenManualSave) {
-          activeProject.historyManager.clearHistory();
+          activeProject.historyManager.clearHistory(activeProject.lastSavedStageSnapshot ?? undefined);
+          markSaveSegment("clearHistory");
         }
         await RecentFileManager.addRecentFileByUri(activeProject.uri);
+        markSaveSegment("addRecentFile");
+      } finally {
+        toast.dismiss(toastId);
+        await finishSaveDiagnostics(activeProject.uri.toString());
       }
     },
   },

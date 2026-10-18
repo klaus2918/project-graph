@@ -3,6 +3,7 @@ import { appCacheDir } from "@tauri-apps/api/path";
 import { join } from "@tauri-apps/api/path";
 import { exists, writeFile, readDir, stat, remove, mkdir } from "@tauri-apps/plugin-fs";
 import { Settings } from "@/core/service/Settings";
+import { appendSaveDiagnosticLog } from "./saveTimingDiagnostics";
 import { toast } from "sonner";
 import { PathString } from "@/utils/pathString";
 
@@ -36,13 +37,19 @@ export class AutoSaveBackupService {
     if (Settings.autoBackup) {
       if (now - this.lastBackupTime >= Settings.autoBackupInterval * 1000) {
         this.lastBackupTime = now;
-        this.autoBackup();
+        const startedAt = performance.now();
+        void this.autoBackup().finally(() =>
+          appendSaveDiagnosticLog({ tag: "autoBackup.total", totalMs: performance.now() - startedAt }),
+        );
       }
     }
     if (Settings.autoSave) {
       if (now - this.lastSaveTime >= Settings.autoSaveInterval * 1000) {
         this.lastSaveTime = now;
-        this.autoSave();
+        const startedAt = performance.now();
+        void this.autoSave().finally(() =>
+          appendSaveDiagnosticLog({ tag: "autoSave.total", totalMs: performance.now() - startedAt }),
+        );
       }
     }
   }
@@ -53,7 +60,8 @@ export class AutoSaveBackupService {
       return;
     }
     if (this.project.projectState === ProjectState.Unsaved) {
-      this.project.save({ includeThumbnail: false });
+      // 必须等保存真正结束再收尾：不 await 的话量到的是「发起保存」而不是「保存完成」
+      await this.project.save({ includeThumbnail: false });
     }
   }
 
@@ -61,7 +69,15 @@ export class AutoSaveBackupService {
    * 执行自动备份操作
    */
   private async autoBackup() {
+    // stageHash 是一次全量 serialize + encode + md5，默认每 600s 触发；它本身就可能是「放置不动也会周期性冻结」的来源
+    const hashStartedAt = performance.now();
     const currentHash = this.project.stageHash;
+    await appendSaveDiagnosticLog({
+      tag: "autoBackup.stageHash",
+      hashMs: performance.now() - hashStartedAt,
+      entityCount: this.project.stageManager.getEntities().length,
+      associationCount: this.project.stageManager.getAssociations().length,
+    });
     if (currentHash === this.lastBackupHash) {
       return;
     }

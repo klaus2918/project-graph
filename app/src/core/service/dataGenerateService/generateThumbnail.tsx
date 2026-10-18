@@ -9,6 +9,12 @@ const THUMBNAIL_MAX_DIMENSION = 256;
 /** 极端宽高比，超过这个比例视为极端 */
 const EXTREME_ASPECT_RATIO = 6;
 
+/** 实体规模超过这个量级，保存链路就不再现算缩略图：整图渲染是主线程同步工作，会直接卡住保存 */
+const THUMBNAIL_MAX_ENTITIES = 2000;
+
+/** 内容包围盒最长边超过这个值也不现算：相机拉到全图后剔除失效，等于逐实体全画一遍 */
+const THUMBNAIL_MAX_CONTENT_DIMENSION = 20000;
+
 /**
  * 给一个矩形增加padding
  * @param rect
@@ -53,6 +59,13 @@ export async function generateThumbnail(project: Project): Promise<Blob | undefi
 
   const contentMaxDim = Math.max(contentRect.width, contentRect.height);
   if (contentMaxDim === 0) return undefined;
+
+  // 保存链路里生成缩略图要把整图渲染一遍，规模一大就把主线程占满、让保存看起来像卡死；
+  // 超限时放弃本次缩略图，文件里保留原有缩略图，换取保存不阻塞。
+  const entityCount = project.stageManager.getEntities().length + project.stageManager.getAssociations().length;
+  if (entityCount > THUMBNAIL_MAX_ENTITIES || contentMaxDim > THUMBNAIL_MAX_CONTENT_DIMENSION) {
+    return undefined;
+  }
 
   const padding = Math.max(20, contentMaxDim * 0.05);
   const paddedRect = padRectangle(contentRect, padding);
@@ -110,6 +123,8 @@ export async function generateThumbnail(project: Project): Promise<Blob | undefi
   const originalCtx = project.canvas.ctx;
   const originalRendererWidth = project.renderer.w;
   const originalRendererHeight = project.renderer.h;
+  // 缩略图渲染会自己启动一次渲染循环，收尾时必须按原状态还原：保存链路结束后，原先在跑的画布循环不能停，否则画布不再重绘
+  const wasRunningBefore = project.isRunning;
 
   try {
     project.canvas.element = tempCanvas;
@@ -141,5 +156,7 @@ export async function generateThumbnail(project: Project): Promise<Blob | undefi
     project.camera.targetScale = originalTargetScale;
 
     tempCanvas.remove();
+
+    if (wasRunningBefore) project.loop();
   }
 }
